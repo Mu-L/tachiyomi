@@ -1,14 +1,14 @@
 package eu.kanade.tachiyomi.ui.browse.extension
 
 import android.app.Application
-import androidx.annotation.StringRes
 import androidx.compose.runtime.Immutable
 import cafe.adriel.voyager.core.model.StateScreenModel
-import cafe.adriel.voyager.core.model.coroutineScope
+import cafe.adriel.voyager.core.model.screenModelScope
+import dev.icerock.moko.resources.StringResource
+import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.extension.interactor.GetExtensionsByType
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.components.SEARCH_DEBOUNCE_MILLIS
-import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.InstallStep
@@ -28,12 +28,14 @@ import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import tachiyomi.core.util.lang.launchIO
+import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import kotlin.time.Duration.Companion.seconds
 
 class ExtensionsScreenModel(
     preferences: SourcePreferences = Injekt.get(),
+    basePreferences: BasePreferences = Injekt.get(),
     private val extensionManager: ExtensionManager = Injekt.get(),
     private val getExtensions: GetExtensionsByType = Injekt.get(),
 ) : StateScreenModel<ExtensionsScreenModel.State>(State()) {
@@ -74,7 +76,7 @@ class ExtensionsScreenModel(
             }
         }
 
-        coroutineScope.launchIO {
+        screenModelScope.launchIO {
             combine(
                 state.map { it.searchQuery }.distinctUntilChanged().debounce(SEARCH_DEBOUNCE_MILLIS),
                 _currentDownloads,
@@ -86,13 +88,13 @@ class ExtensionsScreenModel(
 
                 val updates = _updates.filter(queryFilter(searchQuery)).map(extensionMapper(downloads))
                 if (updates.isNotEmpty()) {
-                    itemsGroups[ExtensionUiModel.Header.Resource(R.string.ext_updates_pending)] = updates
+                    itemsGroups[ExtensionUiModel.Header.Resource(MR.strings.ext_updates_pending)] = updates
                 }
 
                 val installed = _installed.filter(queryFilter(searchQuery)).map(extensionMapper(downloads))
                 val untrusted = _untrusted.filter(queryFilter(searchQuery)).map(extensionMapper(downloads))
                 if (installed.isNotEmpty() || untrusted.isNotEmpty()) {
-                    itemsGroups[ExtensionUiModel.Header.Resource(R.string.ext_installed)] = installed + untrusted
+                    itemsGroups[ExtensionUiModel.Header.Resource(MR.strings.ext_installed)] = installed + untrusted
                 }
 
                 val languagesWithExtensions = _available
@@ -100,7 +102,8 @@ class ExtensionsScreenModel(
                     .groupBy { it.lang }
                     .toSortedMap(LocaleHelper.comparator)
                     .map { (lang, exts) ->
-                        ExtensionUiModel.Header.Text(LocaleHelper.getSourceDisplayName(lang, context)) to exts.map(extensionMapper(downloads))
+                        ExtensionUiModel.Header.Text(LocaleHelper.getSourceDisplayName(lang, context)) to
+                            exts.map(extensionMapper(downloads))
                     }
                 if (languagesWithExtensions.isNotEmpty()) {
                     itemsGroups.putAll(languagesWithExtensions)
@@ -118,11 +121,15 @@ class ExtensionsScreenModel(
                 }
         }
 
-        coroutineScope.launchIO { findAvailableExtensions() }
+        screenModelScope.launchIO { findAvailableExtensions() }
 
         preferences.extensionUpdatesCount().changes()
             .onEach { mutableState.update { state -> state.copy(updates = it) } }
-            .launchIn(coroutineScope)
+            .launchIn(screenModelScope)
+
+        basePreferences.extensionInstaller().changes()
+            .onEach { mutableState.update { state -> state.copy(installer = it) } }
+            .launchIn(screenModelScope)
     }
 
     fun search(query: String?) {
@@ -132,7 +139,7 @@ class ExtensionsScreenModel(
     }
 
     fun updateAllExtensions() {
-        coroutineScope.launchIO {
+        screenModelScope.launchIO {
             state.value.items.values.flatten()
                 .map { it.extension }
                 .filterIsInstance<Extension.Installed>()
@@ -142,13 +149,13 @@ class ExtensionsScreenModel(
     }
 
     fun installExtension(extension: Extension.Available) {
-        coroutineScope.launchIO {
+        screenModelScope.launchIO {
             extensionManager.installExtension(extension).collectToInstallUpdate(extension)
         }
     }
 
     fun updateExtension(extension: Extension.Installed) {
-        coroutineScope.launchIO {
+        screenModelScope.launchIO {
             extensionManager.updateExtension(extension).collectToInstallUpdate(extension)
         }
     }
@@ -176,7 +183,7 @@ class ExtensionsScreenModel(
     }
 
     fun findAvailableExtensions() {
-        coroutineScope.launchIO {
+        screenModelScope.launchIO {
             mutableState.update { it.copy(isRefreshing = true) }
 
             extensionManager.findAvailableExtensions()
@@ -188,8 +195,8 @@ class ExtensionsScreenModel(
         }
     }
 
-    fun trustSignature(signatureHash: String) {
-        extensionManager.trustSignature(signatureHash)
+    fun trustExtension(extension: Extension.Untrusted) {
+        extensionManager.trust(extension)
     }
 
     @Immutable
@@ -198,6 +205,7 @@ class ExtensionsScreenModel(
         val isRefreshing: Boolean = false,
         val items: ItemGroups = mutableMapOf(),
         val updates: Int = 0,
+        val installer: BasePreferences.ExtensionInstaller? = null,
         val searchQuery: String? = null,
     ) {
         val isEmpty = items.isEmpty()
@@ -208,7 +216,7 @@ typealias ItemGroups = MutableMap<ExtensionUiModel.Header, List<ExtensionUiModel
 
 object ExtensionUiModel {
     sealed interface Header {
-        data class Resource(@StringRes val textRes: Int) : Header
+        data class Resource(val textRes: StringResource) : Header
         data class Text(val text: String) : Header
     }
 

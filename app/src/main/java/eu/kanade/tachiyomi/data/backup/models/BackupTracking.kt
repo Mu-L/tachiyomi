@@ -7,7 +7,6 @@ import tachiyomi.domain.track.model.Track
 @Serializable
 data class BackupTracking(
     // in 1.x some of these values have different types or names
-    // syncId is called siteId in 1,x
     @ProtoNumber(1) var syncId: Int,
     // LibraryId is not null in 1.x
     @ProtoNumber(2) var libraryId: Long,
@@ -30,11 +29,11 @@ data class BackupTracking(
 ) {
 
     @Suppress("DEPRECATION")
-    fun getTrackingImpl(): Track {
+    fun getTrackImpl(): Track {
         return Track(
             id = -1,
             mangaId = -1,
-            syncId = this@BackupTracking.syncId.toLong(),
+            trackerId = this@BackupTracking.syncId.toLong(),
             remoteId = if (this@BackupTracking.mediaIdInt != 0) {
                 this@BackupTracking.mediaIdInt.toLong()
             } else {
@@ -54,7 +53,20 @@ data class BackupTracking(
 }
 
 val backupTrackMapper = {
-        _: Long, _: Long, syncId: Long, mediaId: Long, libraryId: Long?, title: String, lastChapterRead: Double, totalChapters: Long, status: Long, score: Double, remoteUrl: String, startDate: Long, finishDate: Long ->
+        _: Long,
+        _: Long,
+        syncId: Long,
+        mediaId: Long,
+        libraryId: Long?,
+        title: String,
+        lastChapterRead: Double,
+        totalChapters: Long,
+        status: Long,
+        score: Double,
+        remoteUrl: String,
+        startDate: Long,
+        finishDate: Long,
+    ->
     BackupTracking(
         syncId = syncId.toInt(),
         mediaId = mediaId,

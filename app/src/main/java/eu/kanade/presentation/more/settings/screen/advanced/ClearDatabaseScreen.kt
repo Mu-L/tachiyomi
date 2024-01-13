@@ -3,19 +3,14 @@ package eu.kanade.presentation.more.settings.screen.advanced
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.FlipToBack
 import androidx.compose.material.icons.outlined.SelectAll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -27,20 +22,19 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastMap
 import cafe.adriel.voyager.core.model.StateScreenModel
-import cafe.adriel.voyager.core.model.coroutineScope
 import cafe.adriel.voyager.core.model.rememberScreenModel
+import cafe.adriel.voyager.core.model.screenModelScope
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.browse.components.SourceIcon
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.AppBarActions
 import eu.kanade.presentation.util.Screen
-import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.util.system.toast
+import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import tachiyomi.core.util.lang.launchIO
@@ -50,7 +44,10 @@ import tachiyomi.data.Database
 import tachiyomi.domain.source.interactor.GetSourcesWithNonLibraryManga
 import tachiyomi.domain.source.model.Source
 import tachiyomi.domain.source.model.SourceWithCount
+import tachiyomi.i18n.MR
+import tachiyomi.presentation.core.components.LazyColumnWithAction
 import tachiyomi.presentation.core.components.material.Scaffold
+import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.EmptyScreen
 import tachiyomi.presentation.core.screens.LoadingScreen
 import tachiyomi.presentation.core.util.selectedBackground
@@ -80,20 +77,20 @@ class ClearDatabaseScreen : Screen() {
                                         model.removeMangaBySourceId()
                                         model.clearSelection()
                                         model.hideConfirmation()
-                                        context.toast(R.string.clear_database_completed)
+                                        context.toast(MR.strings.clear_database_completed)
                                     }
                                 },
                             ) {
-                                Text(text = stringResource(R.string.action_ok))
+                                Text(text = stringResource(MR.strings.action_ok))
                             }
                         },
                         dismissButton = {
                             TextButton(onClick = model::hideConfirmation) {
-                                Text(text = stringResource(R.string.action_cancel))
+                                Text(text = stringResource(MR.strings.action_cancel))
                             }
                         },
                         text = {
-                            Text(text = stringResource(R.string.clear_database_confirmation))
+                            Text(text = stringResource(MR.strings.clear_database_confirmation))
                         },
                     )
                 }
@@ -101,19 +98,19 @@ class ClearDatabaseScreen : Screen() {
                 Scaffold(
                     topBar = { scrollBehavior ->
                         AppBar(
-                            title = stringResource(R.string.pref_clear_database),
+                            title = stringResource(MR.strings.pref_clear_database),
                             navigateUp = navigator::pop,
                             actions = {
                                 if (s.items.isNotEmpty()) {
                                     AppBarActions(
-                                        actions = listOf(
+                                        actions = persistentListOf(
                                             AppBar.Action(
-                                                title = stringResource(R.string.action_select_all),
+                                                title = stringResource(MR.strings.action_select_all),
                                                 icon = Icons.Outlined.SelectAll,
                                                 onClick = model::selectAll,
                                             ),
                                             AppBar.Action(
-                                                title = stringResource(R.string.action_select_all),
+                                                title = stringResource(MR.strings.action_select_inverse),
                                                 icon = Icons.Outlined.FlipToBack,
                                                 onClick = model::invertSelection,
                                             ),
@@ -127,40 +124,22 @@ class ClearDatabaseScreen : Screen() {
                 ) { contentPadding ->
                     if (s.items.isEmpty()) {
                         EmptyScreen(
-                            message = stringResource(R.string.database_clean),
+                            message = stringResource(MR.strings.database_clean),
                             modifier = Modifier.padding(contentPadding),
                         )
                     } else {
-                        Column(
-                            modifier = Modifier
-                                .padding(contentPadding)
-                                .fillMaxSize(),
+                        LazyColumnWithAction(
+                            contentPadding = contentPadding,
+                            actionLabel = stringResource(MR.strings.action_delete),
+                            actionEnabled = s.selection.isNotEmpty(),
+                            onClickAction = model::showConfirmation,
                         ) {
-                            LazyColumn(
-                                modifier = Modifier.weight(1f),
-                            ) {
-                                items(s.items) { sourceWithCount ->
-                                    ClearDatabaseItem(
-                                        source = sourceWithCount.source,
-                                        count = sourceWithCount.count,
-                                        isSelected = s.selection.contains(sourceWithCount.id),
-                                        onClickSelect = { model.toggleSelection(sourceWithCount.source) },
-                                    )
-                                }
-                            }
-
-                            HorizontalDivider()
-
-                            Button(
-                                modifier = Modifier
-                                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                                    .fillMaxWidth(),
-                                onClick = model::showConfirmation,
-                                enabled = s.selection.isNotEmpty(),
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.action_delete),
-                                    color = MaterialTheme.colorScheme.onPrimary,
+                            items(s.items) { sourceWithCount ->
+                                ClearDatabaseItem(
+                                    source = sourceWithCount.source,
+                                    count = sourceWithCount.count,
+                                    isSelected = s.selection.contains(sourceWithCount.id),
+                                    onClickSelect = { model.toggleSelection(sourceWithCount.source) },
                                 )
                             }
                         }
@@ -195,7 +174,7 @@ class ClearDatabaseScreen : Screen() {
                     text = source.visualName,
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                Text(text = stringResource(R.string.clear_database_source_item_count, count))
+                Text(text = stringResource(MR.strings.clear_database_source_item_count, count))
             }
             Checkbox(
                 checked = isSelected,
@@ -210,7 +189,7 @@ private class ClearDatabaseScreenModel : StateScreenModel<ClearDatabaseScreenMod
     private val database: Database = Injekt.get()
 
     init {
-        coroutineScope.launchIO {
+        screenModelScope.launchIO {
             getSourcesWithNonLibraryManga.subscribe()
                 .collectLatest { list ->
                     mutableState.update { old ->

@@ -13,23 +13,26 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.res.stringResource
 import eu.kanade.presentation.components.TabbedDialog
 import eu.kanade.presentation.components.TabbedDialogPaddings
-import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.ui.library.LibrarySettingsScreenModel
+import eu.kanade.tachiyomi.util.system.isDevFlavor
+import eu.kanade.tachiyomi.util.system.isPreviewBuildType
+import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.core.preference.TriState
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.domain.library.model.LibrarySort
 import tachiyomi.domain.library.model.sort
 import tachiyomi.domain.library.service.LibraryPreferences
+import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.CheckboxItem
 import tachiyomi.presentation.core.components.HeadingItem
 import tachiyomi.presentation.core.components.SettingsChipRow
 import tachiyomi.presentation.core.components.SliderItem
 import tachiyomi.presentation.core.components.SortItem
 import tachiyomi.presentation.core.components.TriStateItem
+import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.collectAsState
 
 @Composable
@@ -40,10 +43,10 @@ fun LibrarySettingsDialog(
 ) {
     TabbedDialog(
         onDismissRequest = onDismissRequest,
-        tabTitles = listOf(
-            stringResource(R.string.action_filter),
-            stringResource(R.string.action_sort),
-            stringResource(R.string.action_display),
+        tabTitles = persistentListOf(
+            stringResource(MR.strings.action_filter),
+            stringResource(MR.strings.action_sort),
+            stringResource(MR.strings.action_display),
         ),
     ) { page ->
         Column(
@@ -73,8 +76,10 @@ private fun ColumnScope.FilterPage(
 ) {
     val filterDownloaded by screenModel.libraryPreferences.filterDownloaded().collectAsState()
     val downloadedOnly by screenModel.preferences.downloadedOnly().collectAsState()
+    val autoUpdateMangaRestrictions by screenModel.libraryPreferences.autoUpdateMangaRestrictions().collectAsState()
+
     TriStateItem(
-        label = stringResource(R.string.label_downloaded),
+        label = stringResource(MR.strings.label_downloaded),
         state = if (downloadedOnly) {
             TriState.ENABLED_IS
         } else {
@@ -85,49 +90,61 @@ private fun ColumnScope.FilterPage(
     )
     val filterUnread by screenModel.libraryPreferences.filterUnread().collectAsState()
     TriStateItem(
-        label = stringResource(R.string.action_filter_unread),
+        label = stringResource(MR.strings.action_filter_unread),
         state = filterUnread,
         onClick = { screenModel.toggleFilter(LibraryPreferences::filterUnread) },
     )
     val filterStarted by screenModel.libraryPreferences.filterStarted().collectAsState()
     TriStateItem(
-        label = stringResource(R.string.label_started),
+        label = stringResource(MR.strings.label_started),
         state = filterStarted,
         onClick = { screenModel.toggleFilter(LibraryPreferences::filterStarted) },
     )
     val filterBookmarked by screenModel.libraryPreferences.filterBookmarked().collectAsState()
     TriStateItem(
-        label = stringResource(R.string.action_filter_bookmarked),
+        label = stringResource(MR.strings.action_filter_bookmarked),
         state = filterBookmarked,
         onClick = { screenModel.toggleFilter(LibraryPreferences::filterBookmarked) },
     )
     val filterCompleted by screenModel.libraryPreferences.filterCompleted().collectAsState()
     TriStateItem(
-        label = stringResource(R.string.completed),
+        label = stringResource(MR.strings.completed),
         state = filterCompleted,
         onClick = { screenModel.toggleFilter(LibraryPreferences::filterCompleted) },
     )
+    // TODO: re-enable when custom intervals are ready for stable
+    if (
+        (isDevFlavor || isPreviewBuildType) &&
+        LibraryPreferences.MANGA_OUTSIDE_RELEASE_PERIOD in autoUpdateMangaRestrictions
+    ) {
+        val filterIntervalCustom by screenModel.libraryPreferences.filterIntervalCustom().collectAsState()
+        TriStateItem(
+            label = stringResource(MR.strings.action_filter_interval_custom),
+            state = filterIntervalCustom,
+            onClick = { screenModel.toggleFilter(LibraryPreferences::filterIntervalCustom) },
+        )
+    }
 
-    val trackServices = remember { screenModel.trackServices }
-    when (trackServices.size) {
+    val trackers = remember { screenModel.trackers }
+    when (trackers.size) {
         0 -> {
             // No trackers
         }
         1 -> {
-            val service = trackServices[0]
+            val service = trackers[0]
             val filterTracker by screenModel.libraryPreferences.filterTracking(service.id.toInt()).collectAsState()
             TriStateItem(
-                label = stringResource(R.string.action_filter_tracked),
+                label = stringResource(MR.strings.action_filter_tracked),
                 state = filterTracker,
                 onClick = { screenModel.toggleTracker(service.id.toInt()) },
             )
         }
         else -> {
-            HeadingItem(R.string.action_filter_tracked)
-            trackServices.map { service ->
+            HeadingItem(MR.strings.action_filter_tracked)
+            trackers.map { service ->
                 val filterTracker by screenModel.libraryPreferences.filterTracking(service.id.toInt()).collectAsState()
                 TriStateItem(
-                    label = stringResource(service.nameRes()),
+                    label = service.name,
                     state = filterTracker,
                     onClick = { screenModel.toggleTracker(service.id.toInt()) },
                 )
@@ -144,24 +161,39 @@ private fun ColumnScope.SortPage(
     val sortingMode = category.sort.type
     val sortDescending = !category.sort.isAscending
 
+    val trackerSortOption =
+        if (screenModel.trackers.isEmpty()) {
+            emptyList()
+        } else {
+            listOf(MR.strings.action_sort_tracker_score to LibrarySort.Type.TrackerMean)
+        }
+
     listOf(
-        R.string.action_sort_alpha to LibrarySort.Type.Alphabetical,
-        R.string.action_sort_total to LibrarySort.Type.TotalChapters,
-        R.string.action_sort_last_read to LibrarySort.Type.LastRead,
-        R.string.action_sort_last_manga_update to LibrarySort.Type.LastUpdate,
-        R.string.action_sort_unread_count to LibrarySort.Type.UnreadCount,
-        R.string.action_sort_latest_chapter to LibrarySort.Type.LatestChapter,
-        R.string.action_sort_chapter_fetch_date to LibrarySort.Type.ChapterFetchDate,
-        R.string.action_sort_date_added to LibrarySort.Type.DateAdded,
-    ).map { (titleRes, mode) ->
+        MR.strings.action_sort_alpha to LibrarySort.Type.Alphabetical,
+        MR.strings.action_sort_total to LibrarySort.Type.TotalChapters,
+        MR.strings.action_sort_last_read to LibrarySort.Type.LastRead,
+        MR.strings.action_sort_last_manga_update to LibrarySort.Type.LastUpdate,
+        MR.strings.action_sort_unread_count to LibrarySort.Type.UnreadCount,
+        MR.strings.action_sort_latest_chapter to LibrarySort.Type.LatestChapter,
+        MR.strings.action_sort_chapter_fetch_date to LibrarySort.Type.ChapterFetchDate,
+        MR.strings.action_sort_date_added to LibrarySort.Type.DateAdded,
+    ).plus(trackerSortOption).map { (titleRes, mode) ->
         SortItem(
             label = stringResource(titleRes),
             sortDescending = sortDescending.takeIf { sortingMode == mode },
             onClick = {
                 val isTogglingDirection = sortingMode == mode
                 val direction = when {
-                    isTogglingDirection -> if (sortDescending) LibrarySort.Direction.Ascending else LibrarySort.Direction.Descending
-                    else -> if (sortDescending) LibrarySort.Direction.Descending else LibrarySort.Direction.Ascending
+                    isTogglingDirection -> if (sortDescending) {
+                        LibrarySort.Direction.Ascending
+                    } else {
+                        LibrarySort.Direction.Descending
+                    }
+                    else -> if (sortDescending) {
+                        LibrarySort.Direction.Descending
+                    } else {
+                        LibrarySort.Direction.Ascending
+                    }
                 }
                 screenModel.setSort(category, mode, direction)
             },
@@ -170,18 +202,18 @@ private fun ColumnScope.SortPage(
 }
 
 private val displayModes = listOf(
-    R.string.action_display_grid to LibraryDisplayMode.CompactGrid,
-    R.string.action_display_comfortable_grid to LibraryDisplayMode.ComfortableGrid,
-    R.string.action_display_cover_only_grid to LibraryDisplayMode.CoverOnlyGrid,
-    R.string.action_display_list to LibraryDisplayMode.List,
+    MR.strings.action_display_grid to LibraryDisplayMode.CompactGrid,
+    MR.strings.action_display_comfortable_grid to LibraryDisplayMode.ComfortableGrid,
+    MR.strings.action_display_cover_only_grid to LibraryDisplayMode.CoverOnlyGrid,
+    MR.strings.action_display_list to LibraryDisplayMode.List,
 )
 
 @Composable
 private fun ColumnScope.DisplayPage(
     screenModel: LibrarySettingsScreenModel,
 ) {
-    val displayMode by screenModel.libraryPreferences.libraryDisplayMode().collectAsState()
-    SettingsChipRow(R.string.action_display_mode) {
+    val displayMode by screenModel.libraryPreferences.displayMode().collectAsState()
+    SettingsChipRow(MR.strings.action_display_mode) {
         displayModes.map { (titleRes, mode) ->
             FilterChip(
                 selected = displayMode == mode,
@@ -203,43 +235,43 @@ private fun ColumnScope.DisplayPage(
 
         val columns by columnPreference.collectAsState()
         SliderItem(
-            label = stringResource(R.string.pref_library_columns),
+            label = stringResource(MR.strings.pref_library_columns),
             max = 10,
             value = columns,
             valueText = if (columns > 0) {
-                stringResource(R.string.pref_library_columns_per_row, columns)
+                stringResource(MR.strings.pref_library_columns_per_row, columns)
             } else {
-                stringResource(R.string.label_default)
+                stringResource(MR.strings.label_default)
             },
             onChange = columnPreference::set,
         )
     }
 
-    HeadingItem(R.string.overlay_header)
+    HeadingItem(MR.strings.overlay_header)
     CheckboxItem(
-        label = stringResource(R.string.action_display_download_badge),
+        label = stringResource(MR.strings.action_display_download_badge),
         pref = screenModel.libraryPreferences.downloadBadge(),
     )
     CheckboxItem(
-        label = stringResource(R.string.action_display_local_badge),
+        label = stringResource(MR.strings.action_display_local_badge),
         pref = screenModel.libraryPreferences.localBadge(),
     )
     CheckboxItem(
-        label = stringResource(R.string.action_display_language_badge),
+        label = stringResource(MR.strings.action_display_language_badge),
         pref = screenModel.libraryPreferences.languageBadge(),
     )
     CheckboxItem(
-        label = stringResource(R.string.action_display_show_continue_reading_button),
+        label = stringResource(MR.strings.action_display_show_continue_reading_button),
         pref = screenModel.libraryPreferences.showContinueReadingButton(),
     )
 
-    HeadingItem(R.string.tabs_header)
+    HeadingItem(MR.strings.tabs_header)
     CheckboxItem(
-        label = stringResource(R.string.action_display_show_tabs),
+        label = stringResource(MR.strings.action_display_show_tabs),
         pref = screenModel.libraryPreferences.categoryTabs(),
     )
     CheckboxItem(
-        label = stringResource(R.string.action_display_show_number_of_items),
+        label = stringResource(MR.strings.action_display_show_number_of_items),
         pref = screenModel.libraryPreferences.categoryNumberOfItems(),
     )
 }

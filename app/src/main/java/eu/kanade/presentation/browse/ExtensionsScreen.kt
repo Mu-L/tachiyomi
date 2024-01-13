@@ -1,7 +1,7 @@
 package eu.kanade.presentation.browse
 
-import androidx.annotation.StringRes
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,6 +15,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.GetApp
+import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.VerifiedUser
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -33,23 +38,32 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import cafe.adriel.voyager.navigator.LocalNavigator
+import cafe.adriel.voyager.navigator.currentOrThrow
+import dev.icerock.moko.resources.StringResource
 import eu.kanade.presentation.browse.components.BaseBrowseItem
 import eu.kanade.presentation.browse.components.ExtensionIcon
+import eu.kanade.presentation.components.WarningBanner
 import eu.kanade.presentation.manga.components.DotSeparatorNoSpaceText
-import eu.kanade.tachiyomi.R
+import eu.kanade.presentation.more.settings.screen.browse.ExtensionReposScreen
+import eu.kanade.presentation.util.rememberRequestPackageInstallsPermissionState
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.InstallStep
 import eu.kanade.tachiyomi.ui.browse.extension.ExtensionUiModel
 import eu.kanade.tachiyomi.ui.browse.extension.ExtensionsScreenModel
 import eu.kanade.tachiyomi.util.system.LocaleHelper
+import eu.kanade.tachiyomi.util.system.launchRequestPackageInstallsPermission
+import kotlinx.collections.immutable.persistentListOf
+import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.FastScrollLazyColumn
 import tachiyomi.presentation.core.components.material.PullRefresh
 import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.components.material.topSmallPaddingValues
+import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.EmptyScreen
+import tachiyomi.presentation.core.screens.EmptyScreenAction
 import tachiyomi.presentation.core.screens.LoadingScreen
 import tachiyomi.presentation.core.theme.header
 import tachiyomi.presentation.core.util.plus
@@ -62,6 +76,7 @@ fun ExtensionScreen(
     searchQuery: String?,
     onLongClickItem: (Extension) -> Unit,
     onClickItemCancel: (Extension) -> Unit,
+    onOpenWebView: (Extension.Available) -> Unit,
     onInstallExtension: (Extension.Available) -> Unit,
     onUninstallExtension: (Extension) -> Unit,
     onUpdateExtension: (Extension.Installed) -> Unit,
@@ -70,22 +85,31 @@ fun ExtensionScreen(
     onClickUpdateAll: () -> Unit,
     onRefresh: () -> Unit,
 ) {
+    val navigator = LocalNavigator.currentOrThrow
+
     PullRefresh(
         refreshing = state.isRefreshing,
         onRefresh = onRefresh,
-        enabled = !state.isLoading,
+        enabled = { !state.isLoading },
     ) {
         when {
-            state.isLoading -> LoadingScreen(modifier = Modifier.padding(contentPadding))
+            state.isLoading -> LoadingScreen(Modifier.padding(contentPadding))
             state.isEmpty -> {
                 val msg = if (!searchQuery.isNullOrEmpty()) {
-                    R.string.no_results_found
+                    MR.strings.no_results_found
                 } else {
-                    R.string.empty_screen
+                    MR.strings.empty_screen
                 }
                 EmptyScreen(
-                    textResource = msg,
+                    stringRes = msg,
                     modifier = Modifier.padding(contentPadding),
+                    actions = persistentListOf(
+                        EmptyScreenAction(
+                            stringRes = MR.strings.label_extension_repos,
+                            icon = Icons.Outlined.Settings,
+                            onClick = { navigator.push(ExtensionReposScreen()) },
+                        ),
+                    ),
                 )
             }
             else -> {
@@ -94,6 +118,7 @@ fun ExtensionScreen(
                     contentPadding = contentPadding,
                     onLongClickItem = onLongClickItem,
                     onClickItemCancel = onClickItemCancel,
+                    onOpenWebView = onOpenWebView,
                     onInstallExtension = onInstallExtension,
                     onUninstallExtension = onUninstallExtension,
                     onUpdateExtension = onUpdateExtension,
@@ -112,6 +137,7 @@ private fun ExtensionContent(
     contentPadding: PaddingValues,
     onLongClickItem: (Extension) -> Unit,
     onClickItemCancel: (Extension) -> Unit,
+    onOpenWebView: (Extension.Available) -> Unit,
     onInstallExtension: (Extension.Available) -> Unit,
     onUninstallExtension: (Extension) -> Unit,
     onUpdateExtension: (Extension.Installed) -> Unit,
@@ -119,11 +145,24 @@ private fun ExtensionContent(
     onOpenExtension: (Extension.Installed) -> Unit,
     onClickUpdateAll: () -> Unit,
 ) {
+    val context = LocalContext.current
     var trustState by remember { mutableStateOf<Extension.Untrusted?>(null) }
+    val installGranted = rememberRequestPackageInstallsPermissionState(initialValue = true)
 
     FastScrollLazyColumn(
         contentPadding = contentPadding + topSmallPaddingValues,
     ) {
+        if (!installGranted && state.installer?.requiresSystemPermission == true) {
+            item(key = "extension-permissions-warning") {
+                WarningBanner(
+                    textRes = MR.strings.ext_permission_install_apps_warning,
+                    modifier = Modifier.clickable {
+                        context.launchRequestPackageInstallsPermission()
+                    },
+                )
+            }
+        }
+
         state.items.forEach { (header, items) ->
             item(
                 contentType = "header",
@@ -132,11 +171,11 @@ private fun ExtensionContent(
                 when (header) {
                     is ExtensionUiModel.Header.Resource -> {
                         val action: @Composable RowScope.() -> Unit =
-                            if (header.textRes == R.string.ext_updates_pending) {
+                            if (header.textRes == MR.strings.ext_updates_pending) {
                                 {
                                     Button(onClick = { onClickUpdateAll() }) {
                                         Text(
-                                            text = stringResource(R.string.ext_update_all),
+                                            text = stringResource(MR.strings.ext_update_all),
                                             style = LocalTextStyle.current.copy(
                                                 color = MaterialTheme.colorScheme.onPrimary,
                                             ),
@@ -177,6 +216,13 @@ private fun ExtensionContent(
                         }
                     },
                     onLongClickItem = onLongClickItem,
+                    onClickItemSecondaryAction = {
+                        when (it) {
+                            is Extension.Available -> onOpenWebView(it)
+                            is Extension.Installed -> onOpenExtension(it)
+                            else -> {}
+                        }
+                    },
                     onClickItemCancel = onClickItemCancel,
                     onClickItemAction = {
                         when (it) {
@@ -214,12 +260,13 @@ private fun ExtensionContent(
 
 @Composable
 private fun ExtensionItem(
-    modifier: Modifier = Modifier,
     item: ExtensionUiModel.Item,
     onClickItem: (Extension) -> Unit,
     onLongClickItem: (Extension) -> Unit,
     onClickItemCancel: (Extension) -> Unit,
     onClickItemAction: (Extension) -> Unit,
+    onClickItemSecondaryAction: (Extension) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val (extension, installStep) = item
     BaseBrowseItem(
@@ -244,7 +291,10 @@ private fun ExtensionItem(
                     )
                 }
 
-                val padding by animateDpAsState(targetValue = if (idle) 0.dp else 8.dp)
+                val padding by animateDpAsState(
+                    targetValue = if (idle) 0.dp else 8.dp,
+                    label = "iconPadding",
+                )
                 ExtensionIcon(
                     extension = extension,
                     modifier = Modifier
@@ -259,6 +309,7 @@ private fun ExtensionItem(
                 installStep = installStep,
                 onClickItemCancel = onClickItemCancel,
                 onClickItemAction = onClickItemAction,
+                onClickItemSecondaryAction = onClickItemSecondaryAction,
             )
         },
     ) {
@@ -288,7 +339,7 @@ private fun ExtensionItemContent(
         // Won't look good but it's not like we can ellipsize overflowing content
         FlowRow(
             modifier = Modifier.secondaryItemAlpha(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall),
         ) {
             ProvideTextStyle(value = MaterialTheme.typography.bodySmall) {
                 if (extension is Extension.Installed && extension.lang.isNotEmpty()) {
@@ -304,10 +355,9 @@ private fun ExtensionItemContent(
                 }
 
                 val warning = when {
-                    extension is Extension.Untrusted -> R.string.ext_untrusted
-                    extension is Extension.Installed && extension.isUnofficial -> R.string.ext_unofficial
-                    extension is Extension.Installed && extension.isObsolete -> R.string.ext_obsolete
-                    extension.isNsfw -> R.string.ext_nsfw_short
+                    extension is Extension.Untrusted -> MR.strings.ext_untrusted
+                    extension is Extension.Installed && extension.isObsolete -> MR.strings.ext_obsolete
+                    extension.isNsfw -> MR.strings.ext_nsfw_short
                     else -> null
                 }
                 if (warning != null) {
@@ -323,9 +373,9 @@ private fun ExtensionItemContent(
                     DotSeparatorNoSpaceText()
                     Text(
                         text = when (installStep) {
-                            InstallStep.Pending -> stringResource(R.string.ext_pending)
-                            InstallStep.Downloading -> stringResource(R.string.ext_downloading)
-                            InstallStep.Installing -> stringResource(R.string.ext_installing)
+                            InstallStep.Pending -> stringResource(MR.strings.ext_pending)
+                            InstallStep.Downloading -> stringResource(MR.strings.ext_downloading)
+                            InstallStep.Installing -> stringResource(MR.strings.ext_installing)
                             else -> error("Must not show non-install process text")
                         },
                     )
@@ -342,40 +392,78 @@ private fun ExtensionItemActions(
     modifier: Modifier = Modifier,
     onClickItemCancel: (Extension) -> Unit = {},
     onClickItemAction: (Extension) -> Unit = {},
+    onClickItemSecondaryAction: (Extension) -> Unit = {},
 ) {
     val isIdle = installStep.isCompleted()
-    Row(modifier = modifier) {
-        if (isIdle) {
-            TextButton(
-                onClick = { onClickItemAction(extension) },
-            ) {
-                Text(
-                    text = when (installStep) {
-                        InstallStep.Installed -> stringResource(R.string.ext_installed)
-                        InstallStep.Error -> stringResource(R.string.action_retry)
-                        InstallStep.Idle -> {
-                            when (extension) {
-                                is Extension.Installed -> {
-                                    if (extension.hasUpdate) {
-                                        stringResource(R.string.ext_update)
-                                    } else {
-                                        stringResource(R.string.action_settings)
-                                    }
-                                }
-                                is Extension.Untrusted -> stringResource(R.string.ext_trust)
-                                is Extension.Available -> stringResource(R.string.ext_install)
+
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+    ) {
+        when {
+            !isIdle -> {
+                IconButton(onClick = { onClickItemCancel(extension) }) {
+                    Icon(
+                        imageVector = Icons.Outlined.Close,
+                        contentDescription = stringResource(MR.strings.action_cancel),
+                    )
+                }
+            }
+            installStep == InstallStep.Error -> {
+                IconButton(onClick = { onClickItemAction(extension) }) {
+                    Icon(
+                        imageVector = Icons.Outlined.Refresh,
+                        contentDescription = stringResource(MR.strings.action_retry),
+                    )
+                }
+            }
+            installStep == InstallStep.Idle -> {
+                when (extension) {
+                    is Extension.Installed -> {
+                        IconButton(onClick = { onClickItemSecondaryAction(extension) }) {
+                            Icon(
+                                imageVector = Icons.Outlined.Settings,
+                                contentDescription = stringResource(MR.strings.action_settings),
+                            )
+                        }
+
+                        if (extension.hasUpdate) {
+                            IconButton(onClick = { onClickItemAction(extension) }) {
+                                Icon(
+                                    imageVector = Icons.Outlined.GetApp,
+                                    contentDescription = stringResource(MR.strings.ext_update),
+                                )
                             }
                         }
-                        else -> error("Must not show install process text")
-                    },
-                )
-            }
-        } else {
-            IconButton(onClick = { onClickItemCancel(extension) }) {
-                Icon(
-                    imageVector = Icons.Outlined.Close,
-                    contentDescription = stringResource(R.string.action_cancel),
-                )
+                    }
+                    is Extension.Untrusted -> {
+                        IconButton(onClick = { onClickItemAction(extension) }) {
+                            Icon(
+                                imageVector = Icons.Outlined.VerifiedUser,
+                                contentDescription = stringResource(MR.strings.ext_trust),
+                            )
+                        }
+                    }
+                    is Extension.Available -> {
+                        if (extension.sources.isNotEmpty()) {
+                            IconButton(
+                                onClick = { onClickItemSecondaryAction(extension) },
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Public,
+                                    contentDescription = stringResource(MR.strings.action_open_in_web_view),
+                                )
+                            }
+                        }
+
+                        IconButton(onClick = { onClickItemAction(extension) }) {
+                            Icon(
+                                imageVector = Icons.Outlined.GetApp,
+                                contentDescription = stringResource(MR.strings.ext_install),
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -383,7 +471,7 @@ private fun ExtensionItemActions(
 
 @Composable
 private fun ExtensionHeader(
-    @StringRes textRes: Int,
+    textRes: StringResource,
     modifier: Modifier = Modifier,
     action: @Composable RowScope.() -> Unit = {},
 ) {
@@ -423,19 +511,19 @@ private fun ExtensionTrustDialog(
 ) {
     AlertDialog(
         title = {
-            Text(text = stringResource(R.string.untrusted_extension))
+            Text(text = stringResource(MR.strings.untrusted_extension))
         },
         text = {
-            Text(text = stringResource(R.string.untrusted_extension_message))
+            Text(text = stringResource(MR.strings.untrusted_extension_message))
         },
         confirmButton = {
             TextButton(onClick = onClickConfirm) {
-                Text(text = stringResource(R.string.ext_trust))
+                Text(text = stringResource(MR.strings.ext_trust))
             }
         },
         dismissButton = {
             TextButton(onClick = onClickDismiss) {
-                Text(text = stringResource(R.string.ext_uninstall))
+                Text(text = stringResource(MR.strings.ext_uninstall))
             }
         },
         onDismissRequest = onDismissRequest,

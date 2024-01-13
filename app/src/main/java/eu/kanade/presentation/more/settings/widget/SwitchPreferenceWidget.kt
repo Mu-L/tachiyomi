@@ -9,8 +9,8 @@ import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import eu.kanade.presentation.theme.TachiyomiTheme
-import tachiyomi.presentation.core.util.ThemePreviews
+import androidx.compose.ui.tooling.preview.PreviewLightDark
+import eu.kanade.presentation.theme.TachiyomiPreviewTheme
 
 @Composable
 fun SwitchPreferenceWidget(
@@ -37,10 +37,10 @@ fun SwitchPreferenceWidget(
     )
 }
 
-@ThemePreviews
+@PreviewLightDark
 @Composable
 private fun SwitchPreferenceWidgetPreview() {
-    TachiyomiTheme {
+    TachiyomiPreviewTheme {
         Surface {
             Column {
                 SwitchPreferenceWidget(

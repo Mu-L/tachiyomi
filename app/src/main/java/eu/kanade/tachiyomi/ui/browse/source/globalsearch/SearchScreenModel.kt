@@ -9,6 +9,10 @@ import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.util.ioCoroutineScope
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.source.CatalogueSource
+import kotlinx.collections.immutable.PersistentMap
+import kotlinx.collections.immutable.mutate
+import kotlinx.collections.immutable.persistentMapOf
+import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
@@ -19,7 +23,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import tachiyomi.core.util.lang.awaitSingle
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
@@ -126,9 +129,17 @@ abstract class SearchScreenModel(
         // Reuse previous results if possible
         if (sameQuery) {
             val existingResults = state.value.items
-            updateItems(sources.associateWith { existingResults[it] ?: SearchItemResult.Loading })
+            updateItems(
+                sources
+                    .associateWith { existingResults[it] ?: SearchItemResult.Loading }
+                    .toPersistentMap(),
+            )
         } else {
-            updateItems(sources.associateWith { SearchItemResult.Loading })
+            updateItems(
+                sources
+                    .associateWith { SearchItemResult.Loading }
+                    .toPersistentMap(),
+            )
         }
 
         searchJob = ioCoroutineScope.launch {
@@ -140,7 +151,7 @@ abstract class SearchScreenModel(
 
                     try {
                         val page = withContext(coroutineDispatcher) {
-                            source.fetchSearchManga(1, query, source.getFilterList()).awaitSingle()
+                            source.getSearchManga(1, query, source.getFilterList())
                         }
 
                         val titles = page.mangas.map {
@@ -161,14 +172,21 @@ abstract class SearchScreenModel(
         }
     }
 
-    private fun updateItems(items: Map<CatalogueSource, SearchItemResult>) {
-        mutableState.update { it.copy(items = items.toSortedMap(sortComparator(items))) }
+    private fun updateItems(items: PersistentMap<CatalogueSource, SearchItemResult>) {
+        mutableState.update {
+            it.copy(
+                items = items
+                    .toSortedMap(sortComparator(items))
+                    .toPersistentMap(),
+            )
+        }
     }
 
     private fun updateItem(source: CatalogueSource, result: SearchItemResult) {
-        val mutableItems = state.value.items.toMutableMap()
-        mutableItems[source] = result
-        updateItems(mutableItems)
+        val newItems = state.value.items.mutate {
+            it[source] = result
+        }
+        updateItems(newItems)
     }
 
     @Immutable
@@ -177,7 +195,7 @@ abstract class SearchScreenModel(
         val searchQuery: String? = null,
         val sourceFilter: SourceFilter = SourceFilter.PinnedOnly,
         val onlyShowHasResults: Boolean = false,
-        val items: Map<CatalogueSource, SearchItemResult> = emptyMap(),
+        val items: PersistentMap<CatalogueSource, SearchItemResult> = persistentMapOf(),
     ) {
         val progress: Int = items.count { it.value !is SearchItemResult.Loading }
         val total: Int = items.size

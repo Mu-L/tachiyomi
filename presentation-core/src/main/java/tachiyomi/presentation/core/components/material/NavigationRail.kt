@@ -45,10 +45,13 @@ fun NavigationRail(
                 .fillMaxHeight()
                 .windowInsetsPadding(windowInsets)
                 .widthIn(min = 80.dp)
-                .padding(vertical = MaterialTheme.padding.tiny)
+                .padding(vertical = MaterialTheme.padding.extraSmall)
                 .selectableGroup(),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.tiny, alignment = Alignment.CenterVertically),
+            verticalArrangement = Arrangement.spacedBy(
+                MaterialTheme.padding.extraSmall,
+                alignment = Alignment.CenterVertically,
+            ),
         ) {
             if (header != null) {
                 header()

@@ -11,7 +11,6 @@ import androidx.compose.foundation.gestures.anchoredDraggable
 import androidx.compose.foundation.gestures.animateTo
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
@@ -56,11 +55,11 @@ private val sheetAnimationSpec = tween<Float>(durationMillis = 350)
 
 @Composable
 fun AdaptiveSheet(
-    modifier: Modifier = Modifier,
     isTabletUi: Boolean,
     tonalElevation: Dp,
     enableSwipeDismiss: Boolean,
     onDismissRequest: () -> Unit,
+    modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
     val density = LocalDensity.current
@@ -78,7 +77,7 @@ fun AdaptiveSheet(
                 onDismissRequest()
             }
         }
-        BoxWithConstraints(
+        Box(
             modifier = Modifier
                 .clickable(
                     enabled = true,
@@ -167,7 +166,10 @@ fun AdaptiveSheet(
                     .offset {
                         IntOffset(
                             0,
-                            anchoredDraggableState.offset.takeIf { it.isFinite() }?.roundToInt() ?: 0,
+                            anchoredDraggableState.offset
+                                .takeIf { it.isFinite() }
+                                ?.roundToInt()
+                                ?: 0,
                         )
                     }
                     .anchoredDraggable(
@@ -182,7 +184,10 @@ fun AdaptiveSheet(
                 shape = MaterialTheme.shapes.extraLarge,
                 tonalElevation = tonalElevation,
                 content = {
-                    BackHandler(enabled = anchoredDraggableState.targetValue == 0, onBack = internalOnDismissRequest)
+                    BackHandler(
+                        enabled = anchoredDraggableState.targetValue == 0,
+                        onBack = internalOnDismissRequest,
+                    )
                     content()
                 },
             )
@@ -200,49 +205,55 @@ fun AdaptiveSheet(
     }
 }
 
-private fun <T> AnchoredDraggableState<T>.preUpPostDownNestedScrollConnection() = object : NestedScrollConnection {
-    override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-        val delta = available.toFloat()
-        return if (delta < 0 && source == NestedScrollSource.Drag) {
-            dispatchRawDelta(delta).toOffset()
-        } else {
-            Offset.Zero
+private fun <T> AnchoredDraggableState<T>.preUpPostDownNestedScrollConnection() =
+    object : NestedScrollConnection {
+        override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+            val delta = available.toFloat()
+            return if (delta < 0 && source == NestedScrollSource.Drag) {
+                dispatchRawDelta(delta).toOffset()
+            } else {
+                Offset.Zero
+            }
         }
-    }
 
-    override fun onPostScroll(
-        consumed: Offset,
-        available: Offset,
-        source: NestedScrollSource,
-    ): Offset {
-        return if (source == NestedScrollSource.Drag) {
-            dispatchRawDelta(available.toFloat()).toOffset()
-        } else {
-            Offset.Zero
+        override fun onPostScroll(
+            consumed: Offset,
+            available: Offset,
+            source: NestedScrollSource,
+        ): Offset {
+            return if (source == NestedScrollSource.Drag) {
+                dispatchRawDelta(available.toFloat()).toOffset()
+            } else {
+                Offset.Zero
+            }
         }
-    }
 
-    override suspend fun onPreFling(available: Velocity): Velocity {
-        val toFling = available.toFloat()
-        return if (toFling < 0 && offset > anchors.minAnchor()) {
-            settle(toFling)
-            // since we go to the anchor with tween settling, consume all for the best UX
-            available
-        } else {
-            Velocity.Zero
+        override suspend fun onPreFling(available: Velocity): Velocity {
+            val toFling = available.toFloat()
+            return if (toFling < 0 && offset > anchors.minAnchor()) {
+                settle(toFling)
+                // since we go to the anchor with tween settling, consume all for the best UX
+                available
+            } else {
+                Velocity.Zero
+            }
         }
+
+        override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+            val toFling = available.toFloat()
+            return if (toFling > 0) {
+                settle(toFling)
+                available
+            } else {
+                Velocity.Zero
+            }
+        }
+
+        private fun Float.toOffset(): Offset = Offset(0f, this)
+
+        @JvmName("velocityToFloat")
+        private fun Velocity.toFloat() = this.y
+
+        @JvmName("offsetToFloat")
+        private fun Offset.toFloat(): Float = this.y
     }
-
-    override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-        settle(velocity = available.toFloat())
-        return available
-    }
-
-    private fun Float.toOffset(): Offset = Offset(0f, this)
-
-    @JvmName("velocityToFloat")
-    private fun Velocity.toFloat() = this.y
-
-    @JvmName("offsetToFloat")
-    private fun Offset.toFloat(): Float = this.y
-}

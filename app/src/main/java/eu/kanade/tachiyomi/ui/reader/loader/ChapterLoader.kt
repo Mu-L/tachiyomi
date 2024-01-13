@@ -2,16 +2,18 @@ package eu.kanade.tachiyomi.ui.reader.loader
 
 import android.content.Context
 import com.github.junrar.exception.UnsupportedRarV5Exception
-import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.DownloadProvider
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
+import tachiyomi.core.i18n.stringResource
+import tachiyomi.core.storage.UniFileTempFileManager
 import tachiyomi.core.util.lang.withIOContext
 import tachiyomi.core.util.system.logcat
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.model.StubSource
+import tachiyomi.i18n.MR
 import tachiyomi.source.local.LocalSource
 import tachiyomi.source.local.io.Format
 
@@ -22,6 +24,7 @@ class ChapterLoader(
     private val context: Context,
     private val downloadManager: DownloadManager,
     private val downloadProvider: DownloadProvider,
+    private val tempFileManager: UniFileTempFileManager,
     private val manga: Manga,
     private val source: Source,
 ) {
@@ -46,7 +49,7 @@ class ChapterLoader(
                     .onEach { it.chapter = chapter }
 
                 if (pages.isEmpty()) {
-                    throw Exception(context.getString(R.string.page_list_empty_error))
+                    throw Exception(context.stringResource(MR.strings.page_list_empty_error))
                 }
 
                 // If the chapter is partially read, set the starting page to the last the user read
@@ -75,24 +78,37 @@ class ChapterLoader(
      */
     private fun getPageLoader(chapter: ReaderChapter): PageLoader {
         val dbChapter = chapter.chapter
-        val isDownloaded = downloadManager.isChapterDownloaded(dbChapter.name, dbChapter.scanlator, manga.title, manga.source, skipCache = true)
+        val isDownloaded = downloadManager.isChapterDownloaded(
+            dbChapter.name,
+            dbChapter.scanlator,
+            manga.title,
+            manga.source,
+            skipCache = true,
+        )
         return when {
-            isDownloaded -> DownloadPageLoader(chapter, manga, source, downloadManager, downloadProvider)
+            isDownloaded -> DownloadPageLoader(
+                chapter,
+                manga,
+                source,
+                downloadManager,
+                downloadProvider,
+                tempFileManager,
+            )
             source is LocalSource -> source.getFormat(chapter.chapter).let { format ->
                 when (format) {
                     is Format.Directory -> DirectoryPageLoader(format.file)
-                    is Format.Zip -> ZipPageLoader(format.file)
+                    is Format.Zip -> ZipPageLoader(tempFileManager.createTempFile(format.file))
                     is Format.Rar -> try {
-                        RarPageLoader(format.file)
+                        RarPageLoader(tempFileManager.createTempFile(format.file))
                     } catch (e: UnsupportedRarV5Exception) {
-                        error(context.getString(R.string.loader_rar5_error))
+                        error(context.stringResource(MR.strings.loader_rar5_error))
                     }
-                    is Format.Epub -> EpubPageLoader(format.file)
+                    is Format.Epub -> EpubPageLoader(tempFileManager.createTempFile(format.file))
                 }
             }
             source is HttpSource -> HttpPageLoader(chapter, source)
-            source is StubSource -> error(context.getString(R.string.source_not_installed, source.toString()))
-            else -> error(context.getString(R.string.loader_not_implemented_error))
+            source is StubSource -> error(context.stringResource(MR.strings.source_not_installed, source.toString()))
+            else -> error(context.stringResource(MR.strings.loader_not_implemented_error))
         }
     }
 }

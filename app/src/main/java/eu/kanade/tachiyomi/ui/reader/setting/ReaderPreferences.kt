@@ -1,10 +1,11 @@
 package eu.kanade.tachiyomi.ui.reader.setting
 
-import androidx.annotation.StringRes
-import eu.kanade.tachiyomi.R
-import eu.kanade.tachiyomi.util.system.isReleaseBuildType
+import android.os.Build
+import androidx.compose.ui.graphics.BlendMode
+import dev.icerock.moko.resources.StringResource
 import tachiyomi.core.preference.PreferenceStore
 import tachiyomi.core.preference.getEnum
+import tachiyomi.i18n.MR
 
 class ReaderPreferences(
     private val preferenceStore: PreferenceStore,
@@ -13,6 +14,8 @@ class ReaderPreferences(
     // region General
 
     fun pageTransitions() = preferenceStore.getBoolean("pref_enable_transitions_key", true)
+
+    fun flashOnPageChange() = preferenceStore.getBoolean("pref_reader_flash", false)
 
     fun doubleTapAnimSpeed() = preferenceStore.getInt("pref_double_tap_anim_speed", 500)
 
@@ -29,12 +32,15 @@ class ReaderPreferences(
 
     fun keepScreenOn() = preferenceStore.getBoolean("pref_keep_screen_on_key", true)
 
-    fun defaultReadingMode() = preferenceStore.getInt("pref_default_reading_mode_key", ReadingModeType.RIGHT_TO_LEFT.flagValue)
+    fun defaultReadingMode() = preferenceStore.getInt(
+        "pref_default_reading_mode_key",
+        ReadingMode.RIGHT_TO_LEFT.flagValue,
+    )
 
-    fun defaultOrientationType() = preferenceStore.getInt("pref_default_orientation_type_key", OrientationType.FREE.flagValue)
-
-    // TODO: Enable in release build when the feature is stable
-    fun longStripSplitWebtoon() = preferenceStore.getBoolean("pref_long_strip_split_webtoon", !isReleaseBuildType)
+    fun defaultOrientationType() = preferenceStore.getInt(
+        "pref_default_orientation_type_key",
+        ReaderOrientation.FREE.flagValue,
+    )
 
     fun webtoonDoubleTapZoomEnabled() = preferenceStore.getBoolean("pref_enable_double_tap_zoom_webtoon", true)
 
@@ -82,6 +88,10 @@ class ReaderPreferences(
 
     fun dualPageRotateToFitInvert() = preferenceStore.getBoolean("pref_dual_page_rotate_invert", false)
 
+    fun dualPageRotateToFitWebtoon() = preferenceStore.getBoolean("pref_dual_page_rotate_webtoon", false)
+
+    fun dualPageRotateToFitInvertWebtoon() = preferenceStore.getBoolean("pref_dual_page_rotate_invert_webtoon", false)
+
     // endregion
 
     // region Color filter
@@ -125,14 +135,14 @@ class ReaderPreferences(
     // endregion
 
     enum class TappingInvertMode(
-        @StringRes val titleResId: Int,
+        val titleRes: StringResource,
         val shouldInvertHorizontal: Boolean = false,
         val shouldInvertVertical: Boolean = false,
     ) {
-        NONE(R.string.tapping_inverted_none),
-        HORIZONTAL(R.string.tapping_inverted_horizontal, shouldInvertHorizontal = true),
-        VERTICAL(R.string.tapping_inverted_vertical, shouldInvertVertical = true),
-        BOTH(R.string.tapping_inverted_both, shouldInvertHorizontal = true, shouldInvertVertical = true),
+        NONE(MR.strings.tapping_inverted_none),
+        HORIZONTAL(MR.strings.tapping_inverted_horizontal, shouldInvertHorizontal = true),
+        VERTICAL(MR.strings.tapping_inverted_vertical, shouldInvertVertical = true),
+        BOTH(MR.strings.tapping_inverted_both, shouldInvertHorizontal = true, shouldInvertVertical = true),
     }
 
     enum class ReaderHideThreshold(val threshold: Int) {
@@ -147,28 +157,47 @@ class ReaderPreferences(
         const val WEBTOON_PADDING_MAX = 25
 
         val TapZones = listOf(
-            R.string.label_default,
-            R.string.l_nav,
-            R.string.kindlish_nav,
-            R.string.edge_nav,
-            R.string.right_and_left_nav,
-            R.string.disabled_nav,
+            MR.strings.label_default,
+            MR.strings.l_nav,
+            MR.strings.kindlish_nav,
+            MR.strings.edge_nav,
+            MR.strings.right_and_left_nav,
+            MR.strings.disabled_nav,
         )
 
         val ImageScaleType = listOf(
-            R.string.scale_type_fit_screen,
-            R.string.scale_type_stretch,
-            R.string.scale_type_fit_width,
-            R.string.scale_type_fit_height,
-            R.string.scale_type_original_size,
-            R.string.scale_type_smart_fit,
+            MR.strings.scale_type_fit_screen,
+            MR.strings.scale_type_stretch,
+            MR.strings.scale_type_fit_width,
+            MR.strings.scale_type_fit_height,
+            MR.strings.scale_type_original_size,
+            MR.strings.scale_type_smart_fit,
         )
 
         val ZoomStart = listOf(
-            R.string.zoom_start_automatic,
-            R.string.zoom_start_left,
-            R.string.zoom_start_right,
-            R.string.zoom_start_center,
+            MR.strings.zoom_start_automatic,
+            MR.strings.zoom_start_left,
+            MR.strings.zoom_start_right,
+            MR.strings.zoom_start_center,
         )
+
+        val ColorFilterMode = buildList {
+            addAll(
+                listOf(
+                    MR.strings.label_default to BlendMode.SrcOver,
+                    MR.strings.filter_mode_multiply to BlendMode.Modulate,
+                    MR.strings.filter_mode_screen to BlendMode.Screen,
+                ),
+            )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                addAll(
+                    listOf(
+                        MR.strings.filter_mode_overlay to BlendMode.Overlay,
+                        MR.strings.filter_mode_lighten to BlendMode.Lighten,
+                        MR.strings.filter_mode_darken to BlendMode.Darken,
+                    ),
+                )
+            }
+        }
     }
 }

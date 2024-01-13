@@ -8,13 +8,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.tab.LocalTabNavigator
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import eu.kanade.presentation.components.TabbedScreen
-import eu.kanade.presentation.extensions.RequestStoragePermission
 import eu.kanade.presentation.util.Tab
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.ui.browse.extension.ExtensionsScreenModel
@@ -23,7 +21,9 @@ import eu.kanade.tachiyomi.ui.browse.migration.sources.migrateSourceTab
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchScreen
 import eu.kanade.tachiyomi.ui.browse.source.sourcesTab
 import eu.kanade.tachiyomi.ui.main.MainActivity
-import eu.kanade.tachiyomi.util.storage.DiskUtil
+import kotlinx.collections.immutable.persistentListOf
+import tachiyomi.i18n.MR
+import tachiyomi.presentation.core.i18n.stringResource
 
 data class BrowseTab(
     private val toExtensions: Boolean = false,
@@ -36,7 +36,7 @@ data class BrowseTab(
             val image = AnimatedImageVector.animatedVectorResource(R.drawable.anim_browse_enter)
             return TabOptions(
                 index = 3u,
-                title = stringResource(R.string.browse),
+                title = stringResource(MR.strings.browse),
                 icon = rememberAnimatedVectorPainter(image, isSelected),
             )
         }
@@ -54,8 +54,8 @@ data class BrowseTab(
         val extensionsState by extensionsScreenModel.state.collectAsState()
 
         TabbedScreen(
-            titleRes = R.string.browse,
-            tabs = listOf(
+            titleRes = MR.strings.browse,
+            tabs = persistentListOf(
                 sourcesTab(),
                 extensionsTab(extensionsScreenModel),
                 migrateSourceTab(),
@@ -64,9 +64,6 @@ data class BrowseTab(
             searchQuery = extensionsState.searchQuery,
             onChangeSearchQuery = extensionsScreenModel::search,
         )
-
-        // For local source
-        DiskUtil.RequestStoragePermission()
 
         LaunchedEffect(Unit) {
             (context as? MainActivity)?.ready = true

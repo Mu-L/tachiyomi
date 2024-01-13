@@ -1,8 +1,8 @@
 package eu.kanade.tachiyomi.data.track.shikimori
 
+import android.net.Uri
 import androidx.core.net.toUri
 import eu.kanade.tachiyomi.data.database.models.Track
-import eu.kanade.tachiyomi.data.track.TrackManager
 import eu.kanade.tachiyomi.data.track.model.TrackSearch
 import eu.kanade.tachiyomi.network.DELETE
 import eu.kanade.tachiyomi.network.GET
@@ -27,20 +27,25 @@ import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
 import tachiyomi.core.util.lang.withIOContext
 import uy.kohesive.injekt.injectLazy
+import tachiyomi.domain.track.model.Track as DomainTrack
 
-class ShikimoriApi(private val client: OkHttpClient, interceptor: ShikimoriInterceptor) {
+class ShikimoriApi(
+    private val trackId: Long,
+    private val client: OkHttpClient,
+    interceptor: ShikimoriInterceptor,
+) {
 
     private val json: Json by injectLazy()
 
     private val authClient = client.newBuilder().addInterceptor(interceptor).build()
 
-    suspend fun addLibManga(track: Track, user_id: String): Track {
+    suspend fun addLibManga(track: Track, userId: String): Track {
         return withIOContext {
             with(json) {
                 val payload = buildJsonObject {
                     putJsonObject("user_rate") {
-                        put("user_id", user_id)
-                        put("target_id", track.media_id)
+                        put("user_id", userId)
+                        put("target_id", track.remote_id)
                         put("target_type", "Manga")
                         put("chapters", track.last_chapter_read.toInt())
                         put("score", track.score.toInt())
@@ -55,23 +60,21 @@ class ShikimoriApi(private val client: OkHttpClient, interceptor: ShikimoriInter
                 ).awaitSuccess()
                     .parseAs<JsonObject>()
                     .let {
-                        track.library_id = it["id"]!!.jsonPrimitive.long // save id of the entry for possible future delete request
+                        // save id of the entry for possible future delete request
+                        track.library_id = it["id"]!!.jsonPrimitive.long
                     }
                 track
             }
         }
     }
 
-    suspend fun updateLibManga(track: Track, user_id: String): Track = addLibManga(track, user_id)
+    suspend fun updateLibManga(track: Track, userId: String): Track = addLibManga(track, userId)
 
-    suspend fun deleteLibManga(track: Track): Track {
-        return withIOContext {
-            authClient.newCall(
-                DELETE(
-                    "$apiUrl/v2/user_rates/${track.library_id}",
-                ),
-            ).awaitSuccess()
-            track
+    suspend fun deleteLibManga(track: DomainTrack) {
+        withIOContext {
+            authClient
+                .newCall(DELETE("$apiUrl/v2/user_rates/${track.libraryId}"))
+                .awaitSuccess()
         }
     }
 
@@ -96,12 +99,13 @@ class ShikimoriApi(private val client: OkHttpClient, interceptor: ShikimoriInter
     }
 
     private fun jsonToSearch(obj: JsonObject): TrackSearch {
-        return TrackSearch.create(TrackManager.SHIKIMORI).apply {
-            media_id = obj["id"]!!.jsonPrimitive.long
+        return TrackSearch.create(trackId).apply {
+            remote_id = obj["id"]!!.jsonPrimitive.long
             title = obj["name"]!!.jsonPrimitive.content
             total_chapters = obj["chapters"]!!.jsonPrimitive.int
             cover_url = baseUrl + obj["image"]!!.jsonObject["preview"]!!.jsonPrimitive.content
             summary = ""
+            score = obj["score"]!!.jsonPrimitive.float
             tracking_url = baseUrl + obj["url"]!!.jsonPrimitive.content
             publishing_status = obj["status"]!!.jsonPrimitive.content
             publishing_type = obj["kind"]!!.jsonPrimitive.content
@@ -110,9 +114,9 @@ class ShikimoriApi(private val client: OkHttpClient, interceptor: ShikimoriInter
     }
 
     private fun jsonToTrack(obj: JsonObject, mangas: JsonObject): Track {
-        return Track.create(TrackManager.SHIKIMORI).apply {
+        return Track.create(trackId).apply {
             title = mangas["name"]!!.jsonPrimitive.content
-            media_id = obj["id"]!!.jsonPrimitive.long
+            remote_id = obj["id"]!!.jsonPrimitive.long
             total_chapters = mangas["chapters"]!!.jsonPrimitive.int
             library_id = obj["id"]!!.jsonPrimitive.long
             last_chapter_read = obj["chapters"]!!.jsonPrimitive.float
@@ -122,10 +126,10 @@ class ShikimoriApi(private val client: OkHttpClient, interceptor: ShikimoriInter
         }
     }
 
-    suspend fun findLibManga(track: Track, user_id: String): Track? {
+    suspend fun findLibManga(track: Track, userId: String): Track? {
         return withIOContext {
             val urlMangas = "$apiUrl/mangas".toUri().buildUpon()
-                .appendPath(track.media_id.toString())
+                .appendPath(track.remote_id.toString())
                 .build()
             val mangas = with(json) {
                 authClient.newCall(GET(urlMangas.toString()))
@@ -134,8 +138,8 @@ class ShikimoriApi(private val client: OkHttpClient, interceptor: ShikimoriInter
             }
 
             val url = "$apiUrl/v2/user_rates".toUri().buildUpon()
-                .appendQueryParameter("user_id", user_id)
-                .appendQueryParameter("target_id", track.media_id.toString())
+                .appendQueryParameter("user_id", userId)
+                .appendQueryParameter("target_id", track.remote_id.toString())
                 .appendQueryParameter("target_type", "Manga")
                 .build()
             with(json) {
@@ -191,14 +195,14 @@ class ShikimoriApi(private val client: OkHttpClient, interceptor: ShikimoriInter
         private const val clientId = "1aaf4cf232372708e98b5abc813d795b539c5a916dbbfe9ac61bf02a360832cc"
         private const val clientSecret = "229942c742dd4cde803125d17d64501d91c0b12e14cb1e5120184d77d67024c0"
 
-        private const val baseUrl = "https://shikimori.me"
+        private const val baseUrl = "https://shikimori.one"
         private const val apiUrl = "$baseUrl/api"
         private const val oauthUrl = "$baseUrl/oauth/token"
         private const val loginUrl = "$baseUrl/oauth/authorize"
 
         private const val redirectUrl = "tachiyomi://shikimori-auth"
 
-        fun authUrl() = loginUrl.toUri().buildUpon()
+        fun authUrl(): Uri = loginUrl.toUri().buildUpon()
             .appendQueryParameter("client_id", clientId)
             .appendQueryParameter("redirect_uri", redirectUrl)
             .appendQueryParameter("response_type", "code")

@@ -7,19 +7,23 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.SortByAlpha
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
 import eu.kanade.presentation.category.components.CategoryFloatingActionButton
 import eu.kanade.presentation.category.components.CategoryListItem
 import eu.kanade.presentation.components.AppBar
-import eu.kanade.tachiyomi.R
+import eu.kanade.presentation.components.AppBarActions
 import eu.kanade.tachiyomi.ui.category.CategoryScreenState
+import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.domain.category.model.Category
+import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.components.material.topSmallPaddingValues
+import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.EmptyScreen
 import tachiyomi.presentation.core.util.plus
 
@@ -27,6 +31,7 @@ import tachiyomi.presentation.core.util.plus
 fun CategoryScreen(
     state: CategoryScreenState.Success,
     onClickCreate: () -> Unit,
+    onClickSortAlphabetically: () -> Unit,
     onClickRename: (Category) -> Unit,
     onClickDelete: (Category) -> Unit,
     onClickMoveUp: (Category) -> Unit,
@@ -37,8 +42,19 @@ fun CategoryScreen(
     Scaffold(
         topBar = { scrollBehavior ->
             AppBar(
-                title = stringResource(R.string.action_edit_categories),
+                title = stringResource(MR.strings.action_edit_categories),
                 navigateUp = navigateUp,
+                actions = {
+                    AppBarActions(
+                        persistentListOf(
+                            AppBar.Action(
+                                title = stringResource(MR.strings.action_sort),
+                                icon = Icons.Outlined.SortByAlpha,
+                                onClick = onClickSortAlphabetically,
+                            ),
+                        ),
+                    )
+                },
                 scrollBehavior = scrollBehavior,
             )
         },
@@ -51,7 +67,7 @@ fun CategoryScreen(
     ) { paddingValues ->
         if (state.isEmpty) {
             EmptyScreen(
-                textResource = R.string.information_empty_category,
+                stringRes = MR.strings.information_empty_category,
                 modifier = Modifier.padding(paddingValues),
             )
             return@Scaffold
@@ -60,7 +76,9 @@ fun CategoryScreen(
         CategoryContent(
             categories = state.categories,
             lazyListState = lazyListState,
-            paddingValues = paddingValues + topSmallPaddingValues + PaddingValues(horizontal = MaterialTheme.padding.medium),
+            paddingValues = paddingValues +
+                topSmallPaddingValues +
+                PaddingValues(horizontal = MaterialTheme.padding.medium),
             onClickRename = onClickRename,
             onClickDelete = onClickDelete,
             onMoveUp = onClickMoveUp,

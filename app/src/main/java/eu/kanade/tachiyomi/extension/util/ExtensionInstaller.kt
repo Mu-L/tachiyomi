@@ -133,7 +133,10 @@ internal class ExtensionInstaller(private val context: Context) {
             emit(downloadStatus)
 
             // Stop polling when the download fails or finishes
-            if (downloadStatus == DownloadManager.STATUS_SUCCESSFUL || downloadStatus == DownloadManager.STATUS_FAILED) {
+            if (
+                downloadStatus == DownloadManager.STATUS_SUCCESSFUL ||
+                downloadStatus == DownloadManager.STATUS_FAILED
+            ) {
                 return@flow
             }
 
@@ -264,7 +267,7 @@ internal class ExtensionInstaller(private val context: Context) {
             isRegistered = true
 
             val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
-            context.registerReceiver(this, filter)
+            ContextCompat.registerReceiver(context, this, filter, ContextCompat.RECEIVER_EXPORTED)
         }
 
         /**

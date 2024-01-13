@@ -3,7 +3,6 @@ package eu.kanade.tachiyomi.data.track.bangumi
 import android.net.Uri
 import androidx.core.net.toUri
 import eu.kanade.tachiyomi.data.database.models.Track
-import eu.kanade.tachiyomi.data.track.TrackManager
 import eu.kanade.tachiyomi.data.track.model.TrackSearch
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
@@ -12,6 +11,7 @@ import eu.kanade.tachiyomi.network.parseAs
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.floatOrNull
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -26,7 +26,11 @@ import uy.kohesive.injekt.injectLazy
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
-class BangumiApi(private val client: OkHttpClient, interceptor: BangumiInterceptor) {
+class BangumiApi(
+    private val trackId: Long,
+    private val client: OkHttpClient,
+    interceptor: BangumiInterceptor,
+) {
 
     private val json: Json by injectLazy()
 
@@ -38,7 +42,7 @@ class BangumiApi(private val client: OkHttpClient, interceptor: BangumiIntercept
                 .add("rating", track.score.toInt().toString())
                 .add("status", track.toBangumiStatus())
                 .build()
-            authClient.newCall(POST("$apiUrl/collection/${track.media_id}/update", body = body))
+            authClient.newCall(POST("$apiUrl/collection/${track.remote_id}/update", body = body))
                 .awaitSuccess()
             track
         }
@@ -51,7 +55,7 @@ class BangumiApi(private val client: OkHttpClient, interceptor: BangumiIntercept
                 .add("rating", track.score.toInt().toString())
                 .add("status", track.toBangumiStatus())
                 .build()
-            authClient.newCall(POST("$apiUrl/collection/${track.media_id}/update", body = sbody))
+            authClient.newCall(POST("$apiUrl/collection/${track.remote_id}/update", body = sbody))
                 .awaitSuccess()
 
             // chapter update
@@ -60,7 +64,7 @@ class BangumiApi(private val client: OkHttpClient, interceptor: BangumiIntercept
                 .build()
             authClient.newCall(
                 POST(
-                    "$apiUrl/subject/${track.media_id}/update/watched_eps",
+                    "$apiUrl/subject/${track.remote_id}/update/watched_eps",
                     body = body,
                 ),
             ).awaitSuccess()
@@ -105,11 +109,13 @@ class BangumiApi(private val client: OkHttpClient, interceptor: BangumiIntercept
         } else {
             0
         }
-        return TrackSearch.create(TrackManager.BANGUMI).apply {
-            media_id = obj["id"]!!.jsonPrimitive.long
+        val rating = obj["rating"]?.jsonObject?.get("score")?.jsonPrimitive?.floatOrNull ?: -1f
+        return TrackSearch.create(trackId).apply {
+            remote_id = obj["id"]!!.jsonPrimitive.long
             title = obj["name_cn"]!!.jsonPrimitive.content
             cover_url = coverUrl
             summary = obj["name"]!!.jsonPrimitive.content
+            score = rating
             tracking_url = obj["url"]!!.jsonPrimitive.content
             total_chapters = totalChapters
         }
@@ -118,7 +124,7 @@ class BangumiApi(private val client: OkHttpClient, interceptor: BangumiIntercept
     suspend fun findLibManga(track: Track): Track? {
         return withIOContext {
             with(json) {
-                authClient.newCall(GET("$apiUrl/subject/${track.media_id}"))
+                authClient.newCall(GET("$apiUrl/subject/${track.remote_id}"))
                     .awaitSuccess()
                     .parseAs<JsonObject>()
                     .let { jsonToSearch(it) }
@@ -128,7 +134,7 @@ class BangumiApi(private val client: OkHttpClient, interceptor: BangumiIntercept
 
     suspend fun statusLibManga(track: Track): Track? {
         return withIOContext {
-            val urlUserRead = "$apiUrl/collection/${track.media_id}"
+            val urlUserRead = "$apiUrl/collection/${track.remote_id}"
             val requestUserRead = Request.Builder()
                 .url(urlUserRead)
                 .cacheControl(CacheControl.FORCE_NETWORK)

@@ -8,10 +8,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import cafe.adriel.voyager.core.model.ScreenModel
-import cafe.adriel.voyager.core.model.coroutineScope
 import cafe.adriel.voyager.core.model.rememberScreenModel
+import cafe.adriel.voyager.core.model.screenModelScope
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
@@ -34,6 +33,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import tachiyomi.core.util.lang.launchIO
+import tachiyomi.i18n.MR
+import tachiyomi.presentation.core.i18n.stringResource
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -46,13 +47,13 @@ object MoreTab : Tab {
             val image = AnimatedImageVector.animatedVectorResource(R.drawable.anim_more_enter)
             return TabOptions(
                 index = 4u,
-                title = stringResource(R.string.label_more),
+                title = stringResource(MR.strings.label_more),
                 icon = rememberAnimatedVectorPainter(image, isSelected),
             )
         }
 
     override suspend fun onReselect(navigator: Navigator) {
-        navigator.push(SettingsScreen.toMainScreen())
+        navigator.push(SettingsScreen())
     }
 
     @Composable
@@ -71,9 +72,9 @@ object MoreTab : Tab {
             onClickDownloadQueue = { navigator.push(DownloadQueueScreen) },
             onClickCategories = { navigator.push(CategoryScreen()) },
             onClickStats = { navigator.push(StatsScreen()) },
-            onClickBackupAndRestore = { navigator.push(SettingsScreen.toBackupScreen()) },
-            onClickSettings = { navigator.push(SettingsScreen.toMainScreen()) },
-            onClickAbout = { navigator.push(SettingsScreen.toAboutScreen()) },
+            onClickDataAndStorage = { navigator.push(SettingsScreen(SettingsScreen.Destination.DataAndStorage)) },
+            onClickSettings = { navigator.push(SettingsScreen()) },
+            onClickAbout = { navigator.push(SettingsScreen(SettingsScreen.Destination.About)) },
         )
     }
 }
@@ -83,15 +84,15 @@ private class MoreScreenModel(
     preferences: BasePreferences = Injekt.get(),
 ) : ScreenModel {
 
-    var downloadedOnly by preferences.downloadedOnly().asState(coroutineScope)
-    var incognitoMode by preferences.incognitoMode().asState(coroutineScope)
+    var downloadedOnly by preferences.downloadedOnly().asState(screenModelScope)
+    var incognitoMode by preferences.incognitoMode().asState(screenModelScope)
 
     private var _state: MutableStateFlow<DownloadQueueState> = MutableStateFlow(DownloadQueueState.Stopped)
     val downloadQueueState: StateFlow<DownloadQueueState> = _state.asStateFlow()
 
     init {
         // Handle running/paused status change and queue progress updating
-        coroutineScope.launchIO {
+        screenModelScope.launchIO {
             combine(
                 downloadManager.isDownloaderRunning,
                 downloadManager.queueState,

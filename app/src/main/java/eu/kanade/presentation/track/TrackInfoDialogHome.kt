@@ -1,6 +1,5 @@
 package eu.kanade.presentation.track
 
-import androidx.annotation.StringRes
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -28,6 +27,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
@@ -41,17 +41,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.PreviewLightDark
+import androidx.compose.ui.tooling.preview.PreviewParameter
 import androidx.compose.ui.unit.dp
-import eu.kanade.domain.track.model.toDbTrack
+import dev.icerock.moko.resources.StringResource
 import eu.kanade.presentation.components.DropdownMenu
+import eu.kanade.presentation.theme.TachiyomiPreviewTheme
 import eu.kanade.presentation.track.components.TrackLogoIcon
-import eu.kanade.tachiyomi.R
-import eu.kanade.tachiyomi.data.track.TrackService
+import eu.kanade.tachiyomi.data.track.Tracker
 import eu.kanade.tachiyomi.ui.manga.track.TrackItem
 import eu.kanade.tachiyomi.util.system.copyToClipboard
+import tachiyomi.i18n.MR
+import tachiyomi.presentation.core.i18n.stringResource
 import java.text.DateFormat
 
 private const val UnsetStatusTextAlpha = 0.5F
@@ -80,12 +83,12 @@ fun TrackInfoDialogHome(
     ) {
         trackItems.forEach { item ->
             if (item.track != null) {
-                val supportsScoring = item.service.getScoreList().isNotEmpty()
-                val supportsReadingDates = item.service.supportsReadingDates
+                val supportsScoring = item.tracker.getScoreList().isNotEmpty()
+                val supportsReadingDates = item.tracker.supportsReadingDates
                 TrackInfoItem(
                     title = item.track.title,
-                    service = item.service,
-                    status = item.service.getStatus(item.track.status.toInt()),
+                    tracker = item.tracker,
+                    status = item.tracker.getStatus(item.track.status.toInt()),
                     onStatusClick = { onStatusClick(item) },
                     chapters = "${item.track.lastChapterRead.toInt()}".let {
                         val totalChapters = item.track.totalChapters
@@ -97,7 +100,7 @@ fun TrackInfoDialogHome(
                         }
                     },
                     onChaptersClick = { onChapterClick(item) },
-                    score = item.service.displayScore(item.track.toDbTrack())
+                    score = item.tracker.displayScore(item.track)
                         .takeIf { supportsScoring && item.track.score != 0.0 },
                     onScoreClick = { onScoreClick(item) }
                         .takeIf { supportsScoring },
@@ -115,7 +118,7 @@ fun TrackInfoDialogHome(
                 )
             } else {
                 TrackInfoItemEmpty(
-                    service = item.service,
+                    tracker = item.tracker,
                     onNewSearch = { onNewSearch(item) },
                 )
             }
@@ -126,8 +129,8 @@ fun TrackInfoDialogHome(
 @Composable
 private fun TrackInfoItem(
     title: String,
-    service: TrackService,
-    @StringRes status: Int?,
+    tracker: Tracker,
+    status: StringResource?,
     onStatusClick: () -> Unit,
     chapters: String,
     onChaptersClick: () -> Unit,
@@ -147,7 +150,7 @@ private fun TrackInfoItem(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             TrackLogoIcon(
-                service = service,
+                tracker = tracker,
                 onClick = onOpenInBrowser,
             )
             Box(
@@ -168,6 +171,7 @@ private fun TrackInfoItem(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
             }
             VerticalDivider()
@@ -204,7 +208,7 @@ private fun TrackInfoItem(
                             modifier = Modifier
                                 .weight(1f)
                                 .alpha(if (score == null) UnsetStatusTextAlpha else 1f),
-                            text = score ?: stringResource(R.string.score),
+                            text = score ?: stringResource(MR.strings.score),
                             onClick = onScoreClick,
                         )
                     }
@@ -216,14 +220,14 @@ private fun TrackInfoItem(
                         TrackDetailsItem(
                             modifier = Modifier.weight(1F),
                             text = startDate,
-                            placeholder = stringResource(R.string.track_started_reading_date),
+                            placeholder = stringResource(MR.strings.track_started_reading_date),
                             onClick = onStartDateClick,
                         )
                         VerticalDivider()
                         TrackDetailsItem(
                             modifier = Modifier.weight(1F),
                             text = endDate,
-                            placeholder = stringResource(R.string.track_finished_reading_date),
+                            placeholder = stringResource(MR.strings.track_finished_reading_date),
                             onClick = onEndDateClick,
                         )
                     }
@@ -235,15 +239,14 @@ private fun TrackInfoItem(
 
 @Composable
 private fun TrackDetailsItem(
-    modifier: Modifier = Modifier,
     text: String?,
-    placeholder: String = "",
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    placeholder: String = "",
 ) {
     Box(
         modifier = modifier
             .clickable(onClick = onClick)
-            .alpha(if (text == null) UnsetStatusTextAlpha else 1f)
             .fillMaxHeight()
             .padding(12.dp),
         contentAlignment = Alignment.Center,
@@ -254,26 +257,27 @@ private fun TrackDetailsItem(
             overflow = TextOverflow.Ellipsis,
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (text == null) UnsetStatusTextAlpha else 1f),
         )
     }
 }
 
 @Composable
 private fun TrackInfoItemEmpty(
-    service: TrackService,
+    tracker: Tracker,
     onNewSearch: () -> Unit,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TrackLogoIcon(service)
+        TrackLogoIcon(tracker)
         TextButton(
             onClick = onNewSearch,
             modifier = Modifier
                 .padding(start = 16.dp)
                 .weight(1f),
         ) {
-            Text(text = stringResource(R.string.add_tracking))
+            Text(text = stringResource(MR.strings.add_tracking))
         }
     }
 }
@@ -288,7 +292,7 @@ private fun TrackInfoItemMenu(
         IconButton(onClick = { expanded = true }) {
             Icon(
                 imageVector = Icons.Default.MoreVert,
-                contentDescription = stringResource(R.string.label_more),
+                contentDescription = stringResource(MR.strings.label_more),
             )
         }
         DropdownMenu(
@@ -296,19 +300,32 @@ private fun TrackInfoItemMenu(
             onDismissRequest = { expanded = false },
         ) {
             DropdownMenuItem(
-                text = { Text(stringResource(R.string.action_open_in_browser)) },
+                text = { Text(stringResource(MR.strings.action_open_in_browser)) },
                 onClick = {
                     onOpenInBrowser()
                     expanded = false
                 },
             )
             DropdownMenuItem(
-                text = { Text(stringResource(R.string.action_remove)) },
+                text = { Text(stringResource(MR.strings.action_remove)) },
                 onClick = {
                     onRemoved()
                     expanded = false
                 },
             )
+        }
+    }
+}
+
+@PreviewLightDark
+@Composable
+private fun TrackInfoDialogHomePreviews(
+    @PreviewParameter(TrackInfoDialogHomePreviewProvider::class)
+    content: @Composable () -> Unit,
+) {
+    TachiyomiPreviewTheme {
+        Surface {
+            content()
         }
     }
 }

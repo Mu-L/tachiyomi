@@ -3,9 +3,7 @@ package eu.kanade.tachiyomi.util.system
 import android.app.Activity
 import android.content.Context
 import android.content.res.Configuration
-import android.content.res.Resources
 import android.os.Build
-import android.view.View
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.domain.ui.model.TabletUiMode
 import uy.kohesive.injekt.Injekt
@@ -19,16 +17,8 @@ private const val TABLET_UI_MIN_SCREEN_WIDTH_PORTRAIT_DP = 700
 // make sure icons on the nav rail fit
 private const val TABLET_UI_MIN_SCREEN_WIDTH_LANDSCAPE_DP = 600
 
-fun Context.isTabletUi(): Boolean {
-    return resources.configuration.isTabletUi()
-}
-
 fun Configuration.isTabletUi(): Boolean {
     return smallestScreenWidthDp >= TABLET_UI_REQUIRED_SCREEN_WIDTH_DP
-}
-
-fun Configuration.isAutoTabletUiAvailable(): Boolean {
-    return smallestScreenWidthDp >= TABLET_UI_MIN_SCREEN_WIDTH_LANDSCAPE_DP
 }
 
 // TODO: move the logic to `isTabletUi()` when main activity is rewritten in Compose
@@ -63,18 +53,6 @@ fun Context.prepareTabletUiContext(): Context {
 fun Context.isNightMode(): Boolean {
     return resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
 }
-
-val Resources.isLTR
-    get() = configuration.layoutDirection == View.LAYOUT_DIRECTION_LTR
-
-/**
- * Converts to px and takes into account LTR/RTL layout.
- */
-val Float.dpToPxEnd: Float
-    get() = (
-        this * Resources.getSystem().displayMetrics.density *
-            if (Resources.getSystem().isLTR) 1 else -1
-        )
 
 /**
  * Checks whether if the device has a display cutout (i.e. notch, camera cutout, etc.).

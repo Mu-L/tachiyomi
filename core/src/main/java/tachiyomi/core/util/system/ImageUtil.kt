@@ -31,13 +31,16 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.net.URLConnection
+import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
 object ImageUtil {
 
-    fun isImage(name: String, openStream: (() -> InputStream)? = null): Boolean {
+    fun isImage(name: String?, openStream: (() -> InputStream)? = null): Boolean {
+        if (name == null) return false
+
         val contentType = try {
             URLConnection.guessContentTypeFromName(name)
         } catch (e: Exception) {
@@ -243,7 +246,7 @@ object ImageUtil {
                 // Remove pre-existing split if exists (this split shouldn't exist under normal circumstances)
                 tmpDir.findFile(splitImageName)?.delete()
 
-                val splitFile = tmpDir.createFile(splitImageName)
+                val splitFile = tmpDir.createFile(splitImageName)!!
 
                 val region = Rect(0, splitData.topOffset, splitData.splitWidth, splitData.bottomOffset)
 
@@ -271,49 +274,10 @@ object ImageUtil {
         }
     }
 
-    private fun splitImageName(filenamePrefix: String, index: Int) = "${filenamePrefix}__${"%03d".format(index + 1)}.jpg"
-
-    /**
-     * Check whether the image is a long Strip that needs splitting
-     * @return true if the image is not animated and it's height is greater than image width and screen height
-     */
-    fun isStripSplitNeeded(imageStream: BufferedInputStream): Boolean {
-        if (isAnimatedAndSupported(imageStream)) return false
-
-        val options = extractImageOptions(imageStream)
-        val imageHeightIsBiggerThanWidth = options.outHeight > options.outWidth
-        val imageHeightBiggerThanScreenHeight = options.outHeight > optimalImageHeight
-        return imageHeightIsBiggerThanWidth && imageHeightBiggerThanScreenHeight
-    }
-
-    /**
-     * Split the imageStream according to the provided splitData
-     */
-    fun splitStrip(splitData: SplitData, streamFn: () -> InputStream): InputStream {
-        val bitmapRegionDecoder = getBitmapRegionDecoder(streamFn())
-            ?: throw Exception("Failed to create new instance of BitmapRegionDecoder")
-
-        logcat {
-            "WebtoonSplit #${splitData.index} with topOffset=${splitData.topOffset} " +
-                "splitHeight=${splitData.splitHeight} bottomOffset=${splitData.bottomOffset}"
-        }
-
-        try {
-            val region = Rect(0, splitData.topOffset, splitData.splitWidth, splitData.bottomOffset)
-            val splitBitmap = bitmapRegionDecoder.decodeRegion(region, null)
-            val outputStream = ByteArrayOutputStream()
-            splitBitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
-            return ByteArrayInputStream(outputStream.toByteArray())
-        } catch (e: Throwable) {
-            throw e
-        } finally {
-            bitmapRegionDecoder.recycle()
-        }
-    }
-
-    fun getSplitDataForStream(imageStream: InputStream): List<SplitData> {
-        return extractImageOptions(imageStream).splitData
-    }
+    private fun splitImageName(filenamePrefix: String, index: Int) = "${filenamePrefix}__${"%03d".format(
+        Locale.ENGLISH,
+        index + 1,
+    )}.jpg"
 
     private val BitmapFactory.Options.splitData
         get(): List<SplitData> {
@@ -398,10 +362,12 @@ object ImageUtil {
         val botLeftIsDark = botLeftPixel.isDark()
         val botRightIsDark = botRightPixel.isDark()
 
-        var darkBG = (topLeftIsDark && (botLeftIsDark || botRightIsDark || topRightIsDark || midLeftIsDark || topMidIsDark)) ||
-            (topRightIsDark && (botRightIsDark || botLeftIsDark || midRightIsDark || topMidIsDark))
+        var darkBG =
+            (topLeftIsDark && (botLeftIsDark || botRightIsDark || topRightIsDark || midLeftIsDark || topMidIsDark)) ||
+                (topRightIsDark && (botRightIsDark || botLeftIsDark || midRightIsDark || topMidIsDark))
 
-        val topAndBotPixels = listOf(topLeftPixel, topCenterPixel, topRightPixel, botRightPixel, bottomCenterPixel, botLeftPixel)
+        val topAndBotPixels =
+            listOf(topLeftPixel, topCenterPixel, topRightPixel, botRightPixel, bottomCenterPixel, botLeftPixel)
         val isNotWhiteAndCloseTo = topAndBotPixels.mapIndexed { index, color ->
             val other = topAndBotPixels[(index + 1) % topAndBotPixels.size]
             !color.isWhite() && color.isCloseTo(other)
@@ -546,10 +512,16 @@ object ImageUtil {
             darkBG -> {
                 return ColorDrawable(blackColor)
             }
-            topIsBlackStreak || (topCornersIsDark && topOffsetCornersIsDark && (topMidIsDark || overallBlackPixels > 9)) -> {
+            topIsBlackStreak || (
+                topCornersIsDark && topOffsetCornersIsDark &&
+                    (topMidIsDark || overallBlackPixels > 9)
+                ) -> {
                 intArrayOf(blackColor, blackColor, whiteColor, whiteColor)
             }
-            bottomIsBlackStreak || (botCornersIsDark && botOffsetCornersIsDark && (bottomCenterPixel.isDark() || overallBlackPixels > 9)) -> {
+            bottomIsBlackStreak || (
+                botCornersIsDark && botOffsetCornersIsDark &&
+                    (bottomCenterPixel.isDark() || overallBlackPixels > 9)
+                ) -> {
                 intArrayOf(whiteColor, whiteColor, blackColor, blackColor)
             }
             else -> {

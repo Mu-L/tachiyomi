@@ -13,10 +13,10 @@ fun Track.copyPersonalFrom(other: Track): Track {
     )
 }
 
-fun Track.toDbTrack(): DbTrack = DbTrack.create(syncId).also {
+fun Track.toDbTrack(): DbTrack = DbTrack.create(trackerId).also {
     it.id = id
     it.manga_id = mangaId
-    it.media_id = remoteId
+    it.remote_id = remoteId
     it.library_id = libraryId
     it.title = title
     it.last_chapter_read = lastChapterRead.toFloat()
@@ -33,14 +33,16 @@ fun DbTrack.toDomainTrack(idRequired: Boolean = true): Track? {
     return Track(
         id = trackId,
         mangaId = manga_id,
-        syncId = sync_id.toLong(),
-        remoteId = media_id,
+        trackerId = tracker_id.toLong(),
+        remoteId = remote_id,
         libraryId = library_id,
         title = title,
         lastChapterRead = last_chapter_read.toDouble(),
         totalChapters = total_chapters.toLong(),
         status = status.toLong(),
-        score = score.toDouble(),
+        // Jank workaround due to precision issues while converting
+        // See https://github.com/tachiyomiorg/tachiyomi/issues/10343
+        score = score.toString().toDouble(),
         remoteUrl = tracking_url,
         startDate = started_reading_date,
         finishDate = finished_reading_date,

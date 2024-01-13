@@ -16,40 +16,52 @@ class MangaRepositoryImpl(
 ) : MangaRepository {
 
     override suspend fun getMangaById(id: Long): Manga {
-        return handler.awaitOne { mangasQueries.getMangaById(id, mangaMapper) }
+        return handler.awaitOne { mangasQueries.getMangaById(id, MangaMapper::mapManga) }
     }
 
     override suspend fun getMangaByIdAsFlow(id: Long): Flow<Manga> {
-        return handler.subscribeToOne { mangasQueries.getMangaById(id, mangaMapper) }
+        return handler.subscribeToOne { mangasQueries.getMangaById(id, MangaMapper::mapManga) }
     }
 
     override suspend fun getMangaByUrlAndSourceId(url: String, sourceId: Long): Manga? {
-        return handler.awaitOneOrNull(inTransaction = true) { mangasQueries.getMangaByUrlAndSource(url, sourceId, mangaMapper) }
+        return handler.awaitOneOrNull {
+            mangasQueries.getMangaByUrlAndSource(
+                url,
+                sourceId,
+                MangaMapper::mapManga,
+            )
+        }
     }
 
     override fun getMangaByUrlAndSourceIdAsFlow(url: String, sourceId: Long): Flow<Manga?> {
-        return handler.subscribeToOneOrNull { mangasQueries.getMangaByUrlAndSource(url, sourceId, mangaMapper) }
+        return handler.subscribeToOneOrNull {
+            mangasQueries.getMangaByUrlAndSource(
+                url,
+                sourceId,
+                MangaMapper::mapManga,
+            )
+        }
     }
 
     override suspend fun getFavorites(): List<Manga> {
-        return handler.awaitList { mangasQueries.getFavorites(mangaMapper) }
+        return handler.awaitList { mangasQueries.getFavorites(MangaMapper::mapManga) }
     }
 
     override suspend fun getLibraryManga(): List<LibraryManga> {
-        return handler.awaitList { libraryViewQueries.library(libraryManga) }
+        return handler.awaitList { libraryViewQueries.library(MangaMapper::mapLibraryManga) }
     }
 
     override fun getLibraryMangaAsFlow(): Flow<List<LibraryManga>> {
-        return handler.subscribeToList { libraryViewQueries.library(libraryManga) }
+        return handler.subscribeToList { libraryViewQueries.library(MangaMapper::mapLibraryManga) }
     }
 
     override fun getFavoritesBySourceId(sourceId: Long): Flow<List<Manga>> {
-        return handler.subscribeToList { mangasQueries.getFavoriteBySourceId(sourceId, mangaMapper) }
+        return handler.subscribeToList { mangasQueries.getFavoriteBySourceId(sourceId, MangaMapper::mapManga) }
     }
 
     override suspend fun getDuplicateLibraryManga(id: Long, title: String): List<Manga> {
         return handler.awaitList {
-            mangasQueries.getDuplicateLibraryManga(title, id, mangaMapper)
+            mangasQueries.getDuplicateLibraryManga(title, id, MangaMapper::mapManga)
         }
     }
 

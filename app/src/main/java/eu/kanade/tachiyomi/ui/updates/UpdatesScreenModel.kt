@@ -1,18 +1,15 @@
 package eu.kanade.tachiyomi.ui.updates
 
 import android.app.Application
-import android.content.Context
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import cafe.adriel.voyager.core.model.StateScreenModel
-import cafe.adriel.voyager.core.model.coroutineScope
+import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.core.preference.asState
 import eu.kanade.core.util.addOrRemove
 import eu.kanade.core.util.insertSeparators
 import eu.kanade.domain.chapter.interactor.SetReadStatus
-import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.manga.components.ChapterDownloadAction
 import eu.kanade.presentation.updates.UpdatesUiModel
 import eu.kanade.tachiyomi.data.download.DownloadCache
@@ -20,7 +17,10 @@ import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.data.library.LibraryUpdateJob
 import eu.kanade.tachiyomi.util.lang.toDateKey
-import eu.kanade.tachiyomi.util.lang.toRelativeString
+import kotlinx.collections.immutable.PersistentList
+import kotlinx.collections.immutable.mutate
+import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -45,7 +45,7 @@ import tachiyomi.domain.updates.interactor.GetUpdates
 import tachiyomi.domain.updates.model.UpdatesWithRelations
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.util.Calendar
+import java.time.ZonedDateTime
 import java.util.Date
 
 class UpdatesScreenModel(
@@ -64,22 +64,19 @@ class UpdatesScreenModel(
     private val _events: Channel<Event> = Channel(Int.MAX_VALUE)
     val events: Flow<Event> = _events.receiveAsFlow()
 
-    val lastUpdated by libraryPreferences.libraryUpdateLastTimestamp().asState(coroutineScope)
+    val lastUpdated by libraryPreferences.lastUpdatedTimestamp().asState(screenModelScope)
 
     // First and last selected index in list
     private val selectedPositions: Array<Int> = arrayOf(-1, -1)
     private val selectedChapterIds: HashSet<Long> = HashSet()
 
     init {
-        coroutineScope.launchIO {
+        screenModelScope.launchIO {
             // Set date limit for recent chapters
-            val calendar = Calendar.getInstance().apply {
-                time = Date()
-                add(Calendar.MONTH, -3)
-            }
+            val limit = ZonedDateTime.now().minusMonths(3).toInstant()
 
             combine(
-                getUpdates.subscribe(calendar).distinctUntilChanged(),
+                getUpdates.subscribe(limit).distinctUntilChanged(),
                 downloadCache.changes,
                 downloadManager.queueState,
             ) { updates, _, _ -> updates }
@@ -97,39 +94,41 @@ class UpdatesScreenModel(
                 }
         }
 
-        coroutineScope.launchIO {
+        screenModelScope.launchIO {
             merge(downloadManager.statusFlow(), downloadManager.progressFlow())
                 .catch { logcat(LogPriority.ERROR, it) }
                 .collect(this@UpdatesScreenModel::updateDownloadState)
         }
     }
 
-    private fun List<UpdatesWithRelations>.toUpdateItems(): List<UpdatesItem> {
-        return this.map { update ->
-            val activeDownload = downloadManager.getQueuedDownloadOrNull(update.chapterId)
-            val downloaded = downloadManager.isChapterDownloaded(
-                update.chapterName,
-                update.scanlator,
-                update.mangaTitle,
-                update.sourceId,
-            )
-            val downloadState = when {
-                activeDownload != null -> activeDownload.status
-                downloaded -> Download.State.DOWNLOADED
-                else -> Download.State.NOT_DOWNLOADED
+    private fun List<UpdatesWithRelations>.toUpdateItems(): PersistentList<UpdatesItem> {
+        return this
+            .map { update ->
+                val activeDownload = downloadManager.getQueuedDownloadOrNull(update.chapterId)
+                val downloaded = downloadManager.isChapterDownloaded(
+                    update.chapterName,
+                    update.scanlator,
+                    update.mangaTitle,
+                    update.sourceId,
+                )
+                val downloadState = when {
+                    activeDownload != null -> activeDownload.status
+                    downloaded -> Download.State.DOWNLOADED
+                    else -> Download.State.NOT_DOWNLOADED
+                }
+                UpdatesItem(
+                    update = update,
+                    downloadStateProvider = { downloadState },
+                    downloadProgressProvider = { activeDownload?.progress ?: 0 },
+                    selected = update.chapterId in selectedChapterIds,
+                )
             }
-            UpdatesItem(
-                update = update,
-                downloadStateProvider = { downloadState },
-                downloadProgressProvider = { activeDownload?.progress ?: 0 },
-                selected = update.chapterId in selectedChapterIds,
-            )
-        }
+            .toPersistentList()
     }
 
     fun updateLibrary(): Boolean {
         val started = LibraryUpdateJob.startNow(Injekt.get<Application>())
-        coroutineScope.launch {
+        screenModelScope.launch {
             _events.send(Event.LibraryUpdateTriggered(started))
         }
         return started
@@ -142,17 +141,14 @@ class UpdatesScreenModel(
      */
     private fun updateDownloadState(download: Download) {
         mutableState.update { state ->
-            val newItems = state.items.toMutableList().apply {
-                val modifiedIndex = indexOfFirst { it.update.chapterId == download.chapter.id }
-                if (modifiedIndex < 0) return@apply
+            val newItems = state.items.mutate { list ->
+                val modifiedIndex = list.indexOfFirst { it.update.chapterId == download.chapter.id }
+                if (modifiedIndex < 0) return@mutate
 
-                val item = get(modifiedIndex)
-                set(
-                    modifiedIndex,
-                    item.copy(
-                        downloadStateProvider = { download.status },
-                        downloadProgressProvider = { download.progress },
-                    ),
+                val item = list[modifiedIndex]
+                list[modifiedIndex] = item.copy(
+                    downloadStateProvider = { download.status },
+                    downloadProgressProvider = { download.progress },
                 )
             }
             state.copy(items = newItems)
@@ -161,7 +157,7 @@ class UpdatesScreenModel(
 
     fun downloadChapters(items: List<UpdatesItem>, action: ChapterDownloadAction) {
         if (items.isEmpty()) return
-        coroutineScope.launch {
+        screenModelScope.launch {
             when (action) {
                 ChapterDownloadAction.START -> {
                     downloadChapters(items)
@@ -201,7 +197,7 @@ class UpdatesScreenModel(
      * @param read whether to mark chapters as read or unread.
      */
     fun markUpdatesRead(updates: List<UpdatesItem>, read: Boolean) {
-        coroutineScope.launchIO {
+        screenModelScope.launchIO {
             setReadStatus.await(
                 read = read,
                 chapters = updates
@@ -217,7 +213,7 @@ class UpdatesScreenModel(
      * @param updates the list of chapters to bookmark.
      */
     fun bookmarkUpdates(updates: List<UpdatesItem>, bookmark: Boolean) {
-        coroutineScope.launchIO {
+        screenModelScope.launchIO {
             updates
                 .filterNot { it.update.bookmark == bookmark }
                 .map { ChapterUpdate(id = it.update.chapterId, bookmark = bookmark) }
@@ -231,7 +227,7 @@ class UpdatesScreenModel(
      * @param updatesItem the list of chapters to download.
      */
     private fun downloadChapters(updatesItem: List<UpdatesItem>) {
-        coroutineScope.launchNonCancellable {
+        screenModelScope.launchNonCancellable {
             val groupedUpdates = updatesItem.groupBy { it.update.mangaId }.values
             for (updates in groupedUpdates) {
                 val mangaId = updates.first().update.mangaId
@@ -250,7 +246,7 @@ class UpdatesScreenModel(
      * @param updatesItem list of chapters
      */
     fun deleteChapters(updatesItem: List<UpdatesItem>) {
-        coroutineScope.launchNonCancellable {
+        screenModelScope.launchNonCancellable {
             updatesItem
                 .groupBy { it.update.mangaId }
                 .entries
@@ -328,7 +324,7 @@ class UpdatesScreenModel(
                     }
                 }
             }
-            state.copy(items = newItems)
+            state.copy(items = newItems.toPersistentList())
         }
     }
 
@@ -338,7 +334,7 @@ class UpdatesScreenModel(
                 selectedChapterIds.addOrRemove(it.update.chapterId, selected)
                 it.copy(selected = selected)
             }
-            state.copy(items = newItems)
+            state.copy(items = newItems.toPersistentList())
         }
 
         selectedPositions[0] = -1
@@ -351,7 +347,7 @@ class UpdatesScreenModel(
                 selectedChapterIds.addOrRemove(it.update.chapterId, !it.selected)
                 it.copy(selected = !it.selected)
             }
-            state.copy(items = newItems)
+            state.copy(items = newItems.toPersistentList())
         }
         selectedPositions[0] = -1
         selectedPositions[1] = -1
@@ -368,15 +364,13 @@ class UpdatesScreenModel(
     @Immutable
     data class State(
         val isLoading: Boolean = true,
-        val items: List<UpdatesItem> = emptyList(),
+        val items: PersistentList<UpdatesItem> = persistentListOf(),
         val dialog: Dialog? = null,
     ) {
         val selected = items.filter { it.selected }
         val selectionMode = selected.isNotEmpty()
 
-        fun getUiModel(context: Context): List<UpdatesUiModel> {
-            val dateFormat by mutableStateOf(UiPreferences.dateFormat(Injekt.get<UiPreferences>().dateFormat().get()))
-
+        fun getUiModel(): List<UpdatesUiModel> {
             return items
                 .map { UpdatesUiModel.Item(it) }
                 .insertSeparators { before, after ->
@@ -384,8 +378,7 @@ class UpdatesScreenModel(
                     val afterDate = after?.item?.update?.dateFetch?.toDateKey() ?: Date(0)
                     when {
                         beforeDate.time != afterDate.time && afterDate.time != 0L -> {
-                            val text = afterDate.toRelativeString(context, dateFormat)
-                            UpdatesUiModel.Header(text)
+                            UpdatesUiModel.Header(afterDate)
                         }
                         // Return null to avoid adding a separator between two items.
                         else -> null

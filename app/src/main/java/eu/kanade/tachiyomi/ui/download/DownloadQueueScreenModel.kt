@@ -2,7 +2,7 @@ package eu.kanade.tachiyomi.ui.download
 
 import android.view.MenuItem
 import cafe.adriel.voyager.core.model.ScreenModel
-import cafe.adriel.voyager.core.model.coroutineScope
+import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.model.Download
@@ -11,12 +11,14 @@ import eu.kanade.tachiyomi.source.model.Page
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import uy.kohesive.injekt.Injekt
@@ -84,13 +86,17 @@ class DownloadQueueScreenModel(
                         }
                         reorder(newDownloads)
                     }
-                    R.id.move_to_top_series -> {
+                    R.id.move_to_top_series, R.id.move_to_bottom_series -> {
                         val (selectedSeries, otherSeries) = adapter?.currentItems
                             ?.filterIsInstance<DownloadItem>()
                             ?.map(DownloadItem::download)
                             ?.partition { item.download.manga.id == it.manga.id }
                             ?: Pair(emptyList(), emptyList())
-                        reorder(selectedSeries + otherSeries)
+                        if (menuItem.itemId == R.id.move_to_top_series) {
+                            reorder(selectedSeries + otherSeries)
+                        } else {
+                            reorder(otherSeries + selectedSeries)
+                        }
                     }
                     R.id.cancel_download -> {
                         cancel(listOf(item.download))
@@ -110,7 +116,7 @@ class DownloadQueueScreenModel(
     }
 
     init {
-        coroutineScope.launch {
+        screenModelScope.launch {
             downloadManager.queueState
                 .map { downloads ->
                     downloads
@@ -133,8 +139,8 @@ class DownloadQueueScreenModel(
         adapter = null
     }
 
-    val isDownloaderRunning
-        get() = downloadManager.isDownloaderRunning
+    val isDownloaderRunning = downloadManager.isDownloaderRunning
+        .stateIn(screenModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     fun getDownloadStatusFlow() = downloadManager.statusFlow()
     fun getDownloadProgressFlow() = downloadManager.progressFlow()
@@ -204,7 +210,7 @@ class DownloadQueueScreenModel(
      * @param download the download to observe its progress.
      */
     private fun launchProgressJob(download: Download) {
-        val job = coroutineScope.launch {
+        val job = screenModelScope.launch {
             while (download.pages == null) {
                 delay(50)
             }
@@ -258,6 +264,6 @@ class DownloadQueueScreenModel(
      * @return the holder of the download or null if it's not bound.
      */
     private fun getHolder(download: Download): DownloadHolder? {
-        return controllerBinding.recycler.findViewHolderForItemId(download.chapter.id) as? DownloadHolder
+        return controllerBinding.root.findViewHolderForItemId(download.chapter.id) as? DownloadHolder
     }
 }

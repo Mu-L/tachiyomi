@@ -1,5 +1,4 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
-import org.jmailen.gradle.kotlinter.tasks.LintTask
 
 plugins {
     id("com.android.application")
@@ -7,10 +6,6 @@ plugins {
     kotlin("android")
     kotlin("plugin.serialization")
     id("com.github.zellius.shortcut-helper")
-}
-
-if (gradle.startParameter.taskRequests.toString().contains("Standard")) {
-    apply<com.google.gms.googleservices.GoogleServicesPlugin>()
 }
 
 shortcutHelper.setFilePath("./shortcuts.xml")
@@ -23,17 +18,14 @@ android {
     defaultConfig {
         applicationId = "eu.kanade.tachiyomi"
 
-        versionCode = 104
-        versionName = "0.14.6"
+        versionCode = 119
+        versionName = "0.15.3"
 
         buildConfigField("String", "COMMIT_COUNT", "\"${getCommitCount()}\"")
         buildConfigField("String", "COMMIT_SHA", "\"${getGitSha()}\"")
         buildConfigField("String", "BUILD_TIME", "\"${getBuildTime()}\"")
         buildConfigField("boolean", "INCLUDE_UPDATER", "false")
         buildConfigField("boolean", "PREVIEW", "false")
-
-        // Please disable ACRA or use your own instance in forked versions of the project
-        buildConfigField("String", "ACRA_URI", "\"https://tachiyomi.kanade.eu/crash_report\"")
 
         ndk {
             abiFilters += SUPPORTED_ABIS
@@ -104,15 +96,17 @@ android {
     }
 
     packaging {
-        resources.excludes.addAll(listOf(
-            "META-INF/DEPENDENCIES",
-            "LICENSE.txt",
-            "META-INF/LICENSE",
-            "META-INF/LICENSE.txt",
-            "META-INF/README.md",
-            "META-INF/NOTICE",
-            "META-INF/*.kotlin_module",
-        ))
+        resources.excludes.addAll(
+            listOf(
+                "META-INF/DEPENDENCIES",
+                "LICENSE.txt",
+                "META-INF/LICENSE",
+                "META-INF/LICENSE.txt",
+                "META-INF/README.md",
+                "META-INF/NOTICE",
+                "META-INF/*.kotlin_module",
+            ),
+        )
     }
 
     dependenciesInfo {
@@ -122,6 +116,7 @@ android {
     buildFeatures {
         viewBinding = true
         compose = true
+        buildConfig = true
 
         // Disable some unused things
         aidl = false
@@ -163,9 +158,8 @@ dependencies {
     implementation(compose.ui.tooling.preview)
     implementation(compose.ui.util)
     implementation(compose.accompanist.webview)
-    implementation(compose.accompanist.permissions)
-    implementation(compose.accompanist.themeadapter)
     implementation(compose.accompanist.systemuicontroller)
+    lintChecks(compose.lintchecks)
 
     implementation(androidx.paging.runtime)
     implementation(androidx.paging.compose)
@@ -173,6 +167,7 @@ dependencies {
     implementation(libs.bundles.sqlite)
 
     implementation(kotlinx.reflect)
+    implementation(kotlinx.immutables)
 
     implementation(platform(kotlinx.coroutines.bom))
     implementation(kotlinx.bundles.coroutines)
@@ -191,11 +186,10 @@ dependencies {
     implementation(androidx.bundles.lifecycle)
 
     // Job scheduling
-    implementation(androidx.bundles.workmanager)
+    implementation(androidx.workmanager)
 
     // RxJava
-    implementation(libs.bundles.reactivex)
-    implementation(libs.flowreactivenetwork)
+    implementation(libs.rxjava)
 
     // Networking
     implementation(libs.bundles.okhttp)
@@ -239,15 +233,10 @@ dependencies {
     implementation(libs.aboutLibraries.compose)
     implementation(libs.bundles.voyager)
     implementation(libs.compose.materialmotion)
-    implementation(libs.compose.simpleicons)
     implementation(libs.swipe)
 
     // Logging
     implementation(libs.logcat)
-
-    // Crash reports/analytics
-    implementation(libs.acra.http)
-    "standardImplementation"(libs.firebase.analytics)
 
     // Shizuku
     implementation(libs.bundles.shizuku)
@@ -264,7 +253,9 @@ androidComponents {
     beforeVariants { variantBuilder ->
         // Disables standardBenchmark
         if (variantBuilder.buildType == "benchmark") {
-            variantBuilder.enable = variantBuilder.productFlavors.containsAll(listOf("default" to "dev"))
+            variantBuilder.enable = variantBuilder.productFlavors.containsAll(
+                listOf("default" to "dev"),
+            )
         }
     }
     onVariants(selector().withFlavor("default" to "standard")) {
@@ -275,10 +266,6 @@ androidComponents {
 }
 
 tasks {
-    withType<LintTask>().configureEach {
-        exclude { it.file.path.contains("generated[\\\\/]".toRegex()) }
-    }
-
     // See https://kotlinlang.org/docs/reference/experimental.html#experimental-status-of-experimental-api(-markers)
     withType<KotlinCompile> {
         kotlinOptions.freeCompilerArgs += listOf(
@@ -303,12 +290,12 @@ tasks {
             kotlinOptions.freeCompilerArgs += listOf(
                 "-P",
                 "plugin:androidx.compose.compiler.plugins.kotlin:reportsDestination=" +
-                    project.buildDir.absolutePath + "/compose_metrics"
+                    project.layout.buildDirectory.dir("compose_metrics").get().asFile.absolutePath,
             )
             kotlinOptions.freeCompilerArgs += listOf(
                 "-P",
                 "plugin:androidx.compose.compiler.plugins.kotlin:metricsDestination=" +
-                    project.buildDir.absolutePath + "/compose_metrics"
+                    project.layout.buildDirectory.dir("compose_metrics").get().asFile.absolutePath,
             )
         }
     }

@@ -95,7 +95,10 @@ fun VerticalFastScroller(
             }
 
             val thumbBottomPadding = with(LocalDensity.current) { bottomContentPadding.toPx() }
-            val heightPx = contentHeight.toFloat() - thumbTopPadding - thumbBottomPadding - listState.layoutInfo.afterContentPadding
+            val heightPx = contentHeight.toFloat() -
+                thumbTopPadding -
+                thumbBottomPadding -
+                listState.layoutInfo.afterContentPadding
             val thumbHeightPx = with(LocalDensity.current) { ThumbLength.toPx() }
             val trackHeightPx = heightPx - thumbHeightPx
 
@@ -197,7 +200,8 @@ private fun rememberColumnWidthSums(
     horizontalArrangement,
     contentPadding,
 ) {
-    { constraints ->
+    {
+            constraints ->
         require(constraints.maxWidth != Constraints.Infinity) {
             "LazyVerticalGrid's width should be bound by parent"
         }
@@ -260,7 +264,10 @@ fun VerticalGridFastScroller(
             }
 
             val thumbBottomPadding = with(LocalDensity.current) { bottomContentPadding.toPx() }
-            val heightPx = contentHeight.toFloat() - thumbTopPadding - thumbBottomPadding - state.layoutInfo.afterContentPadding
+            val heightPx = contentHeight.toFloat() -
+                thumbTopPadding -
+                thumbBottomPadding -
+                state.layoutInfo.afterContentPadding
             val thumbHeightPx = with(LocalDensity.current) { ThumbLength.toPx() }
             val trackHeightPx = heightPx - thumbHeightPx
 
@@ -349,7 +356,6 @@ fun VerticalGridFastScroller(
                         },
                     )
                     .height(ThumbLength)
-                    .padding(horizontal = 8.dp)
                     .padding(end = endContentPadding)
                     .width(ThumbThickness)
                     .alpha(alpha.value)
@@ -426,7 +432,7 @@ object Scroller {
 }
 
 private val ThumbLength = 48.dp
-private val ThumbThickness = 8.dp
+private val ThumbThickness = 12.dp
 private val ThumbShape = RoundedCornerShape(ThumbThickness / 2)
 private val FadeOutAnimationSpec = tween<Float>(
     durationMillis = ViewConfiguration.getScrollBarFadeDuration(),

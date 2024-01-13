@@ -1,114 +1,94 @@
 package eu.kanade.presentation.more.settings.screen
 
 import android.app.Activity
-import android.content.Context
-import android.os.Build
-import androidx.annotation.StringRes
-import androidx.appcompat.app.AppCompatDelegate
+import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.core.app.ActivityCompat
-import androidx.core.os.LocaleListCompat
+import cafe.adriel.voyager.navigator.LocalNavigator
+import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.domain.ui.model.TabletUiMode
 import eu.kanade.domain.ui.model.ThemeMode
 import eu.kanade.domain.ui.model.setAppCompatDelegateThemeMode
 import eu.kanade.presentation.more.settings.Preference
+import eu.kanade.presentation.more.settings.screen.appearance.AppLanguageScreen
+import eu.kanade.presentation.more.settings.widget.AppThemeModePreferenceWidget
 import eu.kanade.presentation.more.settings.widget.AppThemePreferenceWidget
-import eu.kanade.tachiyomi.R
-import eu.kanade.tachiyomi.util.system.LocaleHelper
 import eu.kanade.tachiyomi.util.system.toast
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.drop
-import kotlinx.coroutines.flow.merge
-import org.xmlpull.v1.XmlPullParser
+import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.toImmutableMap
+import tachiyomi.i18n.MR
+import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.util.Date
+import java.time.Instant
 
 object SettingsAppearanceScreen : SearchableSettings {
 
     @ReadOnlyComposable
     @Composable
-    @StringRes
-    override fun getTitleRes() = R.string.pref_category_appearance
+    override fun getTitleRes() = MR.strings.pref_category_appearance
 
     @Composable
     override fun getPreferences(): List<Preference> {
-        val context = LocalContext.current
         val uiPreferences = remember { Injekt.get<UiPreferences>() }
 
         return listOf(
-            getThemeGroup(context = context, uiPreferences = uiPreferences),
-            getDisplayGroup(context = context, uiPreferences = uiPreferences),
+            getThemeGroup(uiPreferences = uiPreferences),
+            getDisplayGroup(uiPreferences = uiPreferences),
         )
     }
 
     @Composable
     private fun getThemeGroup(
-        context: Context,
         uiPreferences: UiPreferences,
     ): Preference.PreferenceGroup {
+        val context = LocalContext.current
+
         val themeModePref = uiPreferences.themeMode()
         val themeMode by themeModePref.collectAsState()
 
         val appThemePref = uiPreferences.appTheme()
+        val appTheme by appThemePref.collectAsState()
 
         val amoledPref = uiPreferences.themeDarkAmoled()
         val amoled by amoledPref.collectAsState()
 
-        LaunchedEffect(themeMode) {
-            setAppCompatDelegateThemeMode(themeMode)
-        }
-
-        LaunchedEffect(Unit) {
-            merge(appThemePref.changes(), amoledPref.changes())
-                .drop(2)
-                .collectLatest { (context as? Activity)?.let { ActivityCompat.recreate(it) } }
-        }
-
         return Preference.PreferenceGroup(
-            title = stringResource(R.string.pref_category_theme),
-            preferenceItems = listOf(
-                Preference.PreferenceItem.ListPreference(
-                    pref = themeModePref,
-                    title = stringResource(R.string.pref_theme_mode),
-                    entries = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        mapOf(
-                            ThemeMode.SYSTEM to stringResource(R.string.theme_system),
-                            ThemeMode.LIGHT to stringResource(R.string.theme_light),
-                            ThemeMode.DARK to stringResource(R.string.theme_dark),
-                        )
-                    } else {
-                        mapOf(
-                            ThemeMode.LIGHT to stringResource(R.string.theme_light),
-                            ThemeMode.DARK to stringResource(R.string.theme_dark),
-                        )
-                    },
-                ),
+            title = stringResource(MR.strings.pref_category_theme),
+            preferenceItems = persistentListOf(
                 Preference.PreferenceItem.CustomPreference(
-                    title = stringResource(R.string.pref_app_theme),
-                ) { item ->
-                    val value by appThemePref.collectAsState()
-                    AppThemePreferenceWidget(
-                        title = item.title,
-                        value = value,
-                        amoled = amoled,
-                        onItemClick = { appThemePref.set(it) },
-                    )
+                    title = stringResource(MR.strings.pref_app_theme),
+                ) {
+                    Column {
+                        AppThemeModePreferenceWidget(
+                            value = themeMode,
+                            onItemClick = {
+                                themeModePref.set(it)
+                                setAppCompatDelegateThemeMode(it)
+                            },
+                        )
+
+                        AppThemePreferenceWidget(
+                            value = appTheme,
+                            amoled = amoled,
+                            onItemClick = { appThemePref.set(it) },
+                        )
+                    }
                 },
                 Preference.PreferenceItem.SwitchPreference(
                     pref = amoledPref,
-                    title = stringResource(R.string.pref_dark_theme_pure_black),
+                    title = stringResource(MR.strings.pref_dark_theme_pure_black),
                     enabled = themeMode != ThemeMode.LIGHT,
+                    onValueChanged = {
+                        (context as? Activity)?.let { ActivityCompat.recreate(it) }
+                        true
+                    },
                 ),
             ),
         )
@@ -116,78 +96,57 @@ object SettingsAppearanceScreen : SearchableSettings {
 
     @Composable
     private fun getDisplayGroup(
-        context: Context,
         uiPreferences: UiPreferences,
     ): Preference.PreferenceGroup {
-        val langs = remember { getLangs(context) }
-        var currentLanguage by remember { mutableStateOf(AppCompatDelegate.getApplicationLocales().get(0)?.toLanguageTag() ?: "") }
-        val now = remember { Date().time }
+        val context = LocalContext.current
+        val navigator = LocalNavigator.currentOrThrow
 
-        LaunchedEffect(currentLanguage) {
-            val locale = if (currentLanguage.isEmpty()) {
-                LocaleListCompat.getEmptyLocaleList()
-            } else {
-                LocaleListCompat.forLanguageTags(currentLanguage)
-            }
-            AppCompatDelegate.setApplicationLocales(locale)
+        val now = remember { Instant.now().toEpochMilli() }
+
+        val dateFormat by uiPreferences.dateFormat().collectAsState()
+        val formattedNow = remember(dateFormat) {
+            UiPreferences.dateFormat(dateFormat).format(now)
         }
 
         return Preference.PreferenceGroup(
-            title = stringResource(R.string.pref_category_display),
-            preferenceItems = listOf(
-                Preference.PreferenceItem.BasicListPreference(
-                    value = currentLanguage,
-                    title = stringResource(R.string.pref_app_language),
-                    entries = langs,
-                    onValueChanged = { newValue ->
-                        currentLanguage = newValue
-                        true
-                    },
+            title = stringResource(MR.strings.pref_category_display),
+            preferenceItems = persistentListOf(
+                Preference.PreferenceItem.TextPreference(
+                    title = stringResource(MR.strings.pref_app_language),
+                    onClick = { navigator.push(AppLanguageScreen()) },
                 ),
                 Preference.PreferenceItem.ListPreference(
                     pref = uiPreferences.tabletUiMode(),
-                    title = stringResource(R.string.pref_tablet_ui_mode),
-                    entries = TabletUiMode.entries.associateWith { stringResource(it.titleResId) },
+                    title = stringResource(MR.strings.pref_tablet_ui_mode),
+                    entries = TabletUiMode.entries
+                        .associateWith { stringResource(it.titleRes) }
+                        .toImmutableMap(),
                     onValueChanged = {
-                        context.toast(R.string.requires_app_restart)
+                        context.toast(MR.strings.requires_app_restart)
                         true
                     },
                 ),
                 Preference.PreferenceItem.ListPreference(
                     pref = uiPreferences.dateFormat(),
-                    title = stringResource(R.string.pref_date_format),
+                    title = stringResource(MR.strings.pref_date_format),
                     entries = DateFormats
                         .associateWith {
                             val formattedDate = UiPreferences.dateFormat(it).format(now)
-                            "${it.ifEmpty { stringResource(R.string.label_default) }} ($formattedDate)"
-                        },
+                            "${it.ifEmpty { stringResource(MR.strings.label_default) }} ($formattedDate)"
+                        }
+                        .toImmutableMap(),
+                ),
+                Preference.PreferenceItem.SwitchPreference(
+                    pref = uiPreferences.relativeTime(),
+                    title = stringResource(MR.strings.pref_relative_format),
+                    subtitle = stringResource(
+                        MR.strings.pref_relative_format_summary,
+                        stringResource(MR.strings.relative_time_today),
+                        formattedNow,
+                    ),
                 ),
             ),
         )
-    }
-    private fun getLangs(context: Context): Map<String, String> {
-        val langs = mutableListOf<Pair<String, String>>()
-        val parser = context.resources.getXml(R.xml.locales_config)
-        var eventType = parser.eventType
-        while (eventType != XmlPullParser.END_DOCUMENT) {
-            if (eventType == XmlPullParser.START_TAG && parser.name == "locale") {
-                for (i in 0..<parser.attributeCount) {
-                    if (parser.getAttributeName(i) == "name") {
-                        val langTag = parser.getAttributeValue(i)
-                        val displayName = LocaleHelper.getDisplayName(langTag)
-                        if (displayName.isNotEmpty()) {
-                            langs.add(Pair(langTag, displayName))
-                        }
-                    }
-                }
-            }
-            eventType = parser.next()
-        }
-
-        langs.sortBy { it.second }
-        langs.add(0, Pair("", context.getString(R.string.label_default)))
-
-        return langs.toMap()
     }
 }
 

@@ -1,17 +1,13 @@
 package eu.kanade.tachiyomi.ui.browse.migration.search
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -22,21 +18,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.toMutableStateList
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.model.StateScreenModel
 import eu.kanade.domain.chapter.interactor.SyncChaptersWithSource
 import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.manga.model.hasCustomCover
 import eu.kanade.domain.manga.model.toSManga
-import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
-import eu.kanade.tachiyomi.data.track.EnhancedTrackService
-import eu.kanade.tachiyomi.data.track.TrackManager
+import eu.kanade.tachiyomi.data.track.EnhancedTracker
+import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.ui.browse.migration.MigrationFlags
@@ -47,7 +38,7 @@ import tachiyomi.core.util.lang.launchIO
 import tachiyomi.core.util.lang.withUIContext
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.SetMangaCategories
-import tachiyomi.domain.chapter.interactor.GetChapterByMangaId
+import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.toChapterUpdate
 import tachiyomi.domain.manga.model.Manga
@@ -55,10 +46,14 @@ import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.track.interactor.GetTracks
 import tachiyomi.domain.track.interactor.InsertTrack
+import tachiyomi.i18n.MR
+import tachiyomi.presentation.core.components.LabeledCheckbox
+import tachiyomi.presentation.core.components.material.padding
+import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.LoadingScreen
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.util.Date
+import java.time.Instant
 
 @Composable
 internal fun MigrateDialog(
@@ -69,7 +64,6 @@ internal fun MigrateDialog(
     onClickTitle: () -> Unit,
     onPopScreen: () -> Unit,
 ) {
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val state by screenModel.state.collectAsState()
 
@@ -85,29 +79,24 @@ internal fun MigrateDialog(
         AlertDialog(
             onDismissRequest = onDismissRequest,
             title = {
-                Text(text = stringResource(R.string.migration_dialog_what_to_include))
+                Text(text = stringResource(MR.strings.migration_dialog_what_to_include))
             },
             text = {
                 Column(
                     modifier = Modifier.verticalScroll(rememberScrollState()),
                 ) {
                     flags.forEachIndexed { index, flag ->
-                        val onChange = { selectedFlags[index] = !selectedFlags[index] }
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable(onClick = onChange),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Checkbox(checked = selectedFlags[index], onCheckedChange = { onChange() })
-                            Text(text = context.getString(flag.titleId))
-                        }
+                        LabeledCheckbox(
+                            label = stringResource(flag.titleId),
+                            checked = selectedFlags[index],
+                            onCheckedChange = { selectedFlags[index] = it },
+                        )
                     }
                 }
             },
             confirmButton = {
                 FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall),
                 ) {
                     TextButton(
                         onClick = {
@@ -115,7 +104,7 @@ internal fun MigrateDialog(
                             onClickTitle()
                         },
                     ) {
-                        Text(text = stringResource(R.string.action_show_manga))
+                        Text(text = stringResource(MR.strings.action_show_manga))
                     }
 
                     Spacer(modifier = Modifier.weight(1f))
@@ -133,7 +122,7 @@ internal fun MigrateDialog(
                             }
                         },
                     ) {
-                        Text(text = stringResource(R.string.copy))
+                        Text(text = stringResource(MR.strings.copy))
                     }
                     TextButton(
                         onClick = {
@@ -149,7 +138,7 @@ internal fun MigrateDialog(
                             }
                         },
                     ) {
-                        Text(text = stringResource(R.string.migrate))
+                        Text(text = stringResource(MR.strings.migrate))
                     }
                 }
             },
@@ -161,7 +150,7 @@ internal class MigrateDialogScreenModel(
     private val sourceManager: SourceManager = Injekt.get(),
     private val downloadManager: DownloadManager = Injekt.get(),
     private val updateManga: UpdateManga = Injekt.get(),
-    private val getChapterByMangaId: GetChapterByMangaId = Injekt.get(),
+    private val getChaptersByMangaId: GetChaptersByMangaId = Injekt.get(),
     private val syncChaptersWithSource: SyncChaptersWithSource = Injekt.get(),
     private val updateChapter: UpdateChapter = Injekt.get(),
     private val getCategories: GetCategories = Injekt.get(),
@@ -177,7 +166,7 @@ internal class MigrateDialogScreenModel(
     }
 
     private val enhancedServices by lazy {
-        Injekt.get<TrackManager>().services.filterIsInstance<EnhancedTrackService>()
+        Injekt.get<TrackerManager>().trackers.filterIsInstance<EnhancedTracker>()
     }
 
     suspend fun migrateManga(
@@ -233,8 +222,8 @@ internal class MigrateDialogScreenModel(
 
         // Update chapters read, bookmark and dateFetch
         if (migrateChapters) {
-            val prevMangaChapters = getChapterByMangaId.await(oldManga.id)
-            val mangaChapters = getChapterByMangaId.await(newManga.id)
+            val prevMangaChapters = getChaptersByMangaId.await(oldManga.id)
+            val mangaChapters = getChaptersByMangaId.await(newManga.id)
 
             val maxChapterRead = prevMangaChapters
                 .filter { it.read }
@@ -309,7 +298,7 @@ internal class MigrateDialogScreenModel(
                 favorite = true,
                 chapterFlags = oldManga.chapterFlags,
                 viewerFlags = oldManga.viewerFlags,
-                dateAdded = if (replace) oldManga.dateAdded else Date().time,
+                dateAdded = if (replace) oldManga.dateAdded else Instant.now().toEpochMilli(),
             ),
         )
     }

@@ -34,7 +34,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.animation.doOnEnd
 import androidx.core.net.toUri
@@ -57,23 +56,24 @@ import eu.kanade.presentation.components.AppStateBanners
 import eu.kanade.presentation.components.DownloadedOnlyBannerBackgroundColor
 import eu.kanade.presentation.components.IncognitoModeBannerBackgroundColor
 import eu.kanade.presentation.components.IndexingBannerBackgroundColor
+import eu.kanade.presentation.more.settings.screen.browse.ExtensionReposScreen
+import eu.kanade.presentation.more.settings.screen.data.RestoreBackupScreen
 import eu.kanade.presentation.util.AssistContentScreen
 import eu.kanade.presentation.util.DefaultNavigatorScreenTransition
 import eu.kanade.tachiyomi.BuildConfig
 import eu.kanade.tachiyomi.Migrations
-import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.data.download.DownloadCache
 import eu.kanade.tachiyomi.data.notification.NotificationReceiver
-import eu.kanade.tachiyomi.data.updater.AppUpdateChecker
 import eu.kanade.tachiyomi.data.updater.RELEASE_URL
-import eu.kanade.tachiyomi.extension.api.ExtensionGithubApi
+import eu.kanade.tachiyomi.extension.api.ExtensionApi
 import eu.kanade.tachiyomi.ui.base.activity.BaseActivity
 import eu.kanade.tachiyomi.ui.browse.source.browse.BrowseSourceScreen
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchScreen
+import eu.kanade.tachiyomi.ui.deeplink.DeepLinkScreen
 import eu.kanade.tachiyomi.ui.home.HomeScreen
 import eu.kanade.tachiyomi.ui.manga.MangaScreen
-import eu.kanade.tachiyomi.ui.more.NewUpdateScreen
+import eu.kanade.tachiyomi.ui.more.OnboardingScreen
 import eu.kanade.tachiyomi.util.system.dpToPx
 import eu.kanade.tachiyomi.util.system.isNavigationBarNeedsScrim
 import eu.kanade.tachiyomi.util.system.openInBrowser
@@ -88,10 +88,12 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import logcat.LogPriority
 import tachiyomi.core.Constants
+import tachiyomi.core.util.lang.launchIO
 import tachiyomi.core.util.system.logcat
 import tachiyomi.domain.library.service.LibraryPreferences
-import tachiyomi.domain.release.interactor.GetApplicationRelease
+import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.Scaffold
+import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -137,7 +139,7 @@ class MainActivity : BaseActivity() {
                 libraryPreferences = libraryPreferences,
                 readerPreferences = Injekt.get(),
                 backupPreferences = Injekt.get(),
-                trackManager = Injekt.get(),
+                trackerManager = Injekt.get(),
             )
         } else {
             false
@@ -150,6 +152,7 @@ class MainActivity : BaseActivity() {
         }
 
         // Draw edge-to-edge
+        // TODO: replace with ComponentActivity#enableEdgeToEdge
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
         setComposeContent {
@@ -248,21 +251,22 @@ class MainActivity : BaseActivity() {
                 HandleOnNewIntent(context = context, navigator = navigator)
 
                 CheckForUpdates()
+                ShowOnboarding()
             }
 
             var showChangelog by remember { mutableStateOf(didMigration && !BuildConfig.DEBUG) }
             if (showChangelog) {
                 AlertDialog(
                     onDismissRequest = { showChangelog = false },
-                    title = { Text(text = stringResource(R.string.updated_version, BuildConfig.VERSION_NAME)) },
+                    title = { Text(text = stringResource(MR.strings.updated_version, BuildConfig.VERSION_NAME)) },
                     dismissButton = {
                         TextButton(onClick = { openInBrowser(RELEASE_URL) }) {
-                            Text(text = stringResource(R.string.whats_new))
+                            Text(text = stringResource(MR.strings.whats_new))
                         }
                     },
                     confirmButton = {
                         TextButton(onClick = { showChangelog = false }) {
-                            Text(text = stringResource(R.string.action_ok))
+                            Text(text = stringResource(MR.strings.action_ok))
                         }
                     },
                 )
@@ -277,7 +281,9 @@ class MainActivity : BaseActivity() {
         setSplashScreenExitAnimation(splashScreen)
 
         if (isLaunch && libraryPreferences.autoClearChapterCache().get()) {
-            chapterCache.clear()
+            lifecycleScope.launchIO {
+                chapterCache.clear()
+            }
         }
     }
 
@@ -305,34 +311,24 @@ class MainActivity : BaseActivity() {
     @Composable
     private fun CheckForUpdates() {
         val context = LocalContext.current
-        val navigator = LocalNavigator.currentOrThrow
-
-        // App updates
-        LaunchedEffect(Unit) {
-            if (BuildConfig.INCLUDE_UPDATER) {
-                try {
-                    val result = AppUpdateChecker().checkForUpdate(context)
-                    if (result is GetApplicationRelease.Result.NewUpdate) {
-                        val updateScreen = NewUpdateScreen(
-                            versionName = result.release.version,
-                            changelogInfo = result.release.info,
-                            releaseLink = result.release.releaseLink,
-                            downloadLink = result.release.getDownloadLink(),
-                        )
-                        navigator.push(updateScreen)
-                    }
-                } catch (e: Exception) {
-                    logcat(LogPriority.ERROR, e)
-                }
-            }
-        }
 
         // Extensions updates
         LaunchedEffect(Unit) {
             try {
-                ExtensionGithubApi().checkForUpdates(context)
+                ExtensionApi().checkForUpdates(context)
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR, e)
+            }
+        }
+    }
+
+    @Composable
+    private fun ShowOnboarding() {
+        val navigator = LocalNavigator.currentOrThrow
+
+        LaunchedEffect(Unit) {
+            if (!preferences.shownOnboardingFlow().get() && navigator.lastItem !is OnboardingScreen) {
+                navigator.push(OnboardingScreen())
             }
         }
     }
@@ -383,7 +379,11 @@ class MainActivity : BaseActivity() {
     private fun handleIntentAction(intent: Intent, navigator: Navigator): Boolean {
         val notificationId = intent.getIntExtra("notificationId", -1)
         if (notificationId > -1) {
-            NotificationReceiver.dismissNotification(applicationContext, notificationId, intent.getIntExtra("groupId", 0))
+            NotificationReceiver.dismissNotification(
+                applicationContext,
+                notificationId,
+                intent.getIntExtra("groupId", 0),
+            )
         }
 
         val tabToOpen = when (intent.action) {
@@ -409,7 +409,7 @@ class MainActivity : BaseActivity() {
                 val query = intent.getStringExtra(SearchManager.QUERY) ?: intent.getStringExtra(Intent.EXTRA_TEXT)
                 if (!query.isNullOrEmpty()) {
                     navigator.popUntilRoot()
-                    navigator.push(GlobalSearchScreen(query))
+                    navigator.push(DeepLinkScreen(query))
                 }
                 null
             }
@@ -419,6 +419,21 @@ class MainActivity : BaseActivity() {
                     val filter = intent.getStringExtra(INTENT_SEARCH_FILTER)
                     navigator.popUntilRoot()
                     navigator.push(GlobalSearchScreen(query, filter))
+                }
+                null
+            }
+            Intent.ACTION_VIEW -> {
+                // Handling opening of backup files
+                if (intent.data.toString().endsWith(".tachibk")) {
+                    navigator.popUntilRoot()
+                    navigator.push(RestoreBackupScreen(intent.data.toString()))
+                }
+                // Deep link to add extension repo
+                else if (intent.scheme == "tachiyomi" && intent.data?.host == "add-repo") {
+                    intent.data?.getQueryParameter("url")?.let { repoUrl ->
+                        navigator.popUntilRoot()
+                        navigator.push(ExtensionReposScreen(repoUrl))
+                    }
                 }
                 null
             }
@@ -434,13 +449,13 @@ class MainActivity : BaseActivity() {
     }
 
     companion object {
-        // Splash screen
-        private const val SPLASH_MIN_DURATION = 500 // ms
-        private const val SPLASH_MAX_DURATION = 5000 // ms
-        private const val SPLASH_EXIT_ANIM_DURATION = 400L // ms
-
         const val INTENT_SEARCH = "eu.kanade.tachiyomi.SEARCH"
         const val INTENT_SEARCH_QUERY = "query"
         const val INTENT_SEARCH_FILTER = "filter"
     }
 }
+
+// Splash screen
+private const val SPLASH_MIN_DURATION = 500 // ms
+private const val SPLASH_MAX_DURATION = 5000 // ms
+private const val SPLASH_EXIT_ANIM_DURATION = 400L // ms

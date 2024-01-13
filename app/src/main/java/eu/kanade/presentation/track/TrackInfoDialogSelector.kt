@@ -20,6 +20,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SelectableDates
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
@@ -28,14 +29,20 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
-import eu.kanade.tachiyomi.R
+import dev.icerock.moko.resources.StringResource
+import eu.kanade.presentation.theme.TachiyomiPreviewTheme
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.persistentMapOf
+import kotlinx.collections.immutable.toImmutableList
+import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.ScrollbarLazyColumn
 import tachiyomi.presentation.core.components.WheelNumberPicker
 import tachiyomi.presentation.core.components.WheelTextPicker
 import tachiyomi.presentation.core.components.material.AlertDialogContent
 import tachiyomi.presentation.core.components.material.padding
+import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.isScrolledToEnd
 import tachiyomi.presentation.core.util.isScrolledToStart
 
@@ -43,12 +50,12 @@ import tachiyomi.presentation.core.util.isScrolledToStart
 fun TrackStatusSelector(
     selection: Int,
     onSelectionChange: (Int) -> Unit,
-    selections: Map<Int, Int?>,
+    selections: Map<Int, StringResource?>,
     onConfirm: () -> Unit,
     onDismissRequest: () -> Unit,
 ) {
     BaseSelector(
-        title = stringResource(R.string.status),
+        title = stringResource(MR.strings.status),
         content = {
             val state = rememberLazyListState()
             ScrollbarLazyColumn(state = state) {
@@ -96,12 +103,12 @@ fun TrackChapterSelector(
     onDismissRequest: () -> Unit,
 ) {
     BaseSelector(
-        title = stringResource(R.string.chapters),
+        title = stringResource(MR.strings.chapters),
         content = {
             WheelNumberPicker(
+                items = range.toImmutableList(),
                 modifier = Modifier.align(Alignment.Center),
                 startIndex = selection,
-                items = range.toList(),
                 onSelectionChanged = { onSelectionChange(it) },
             )
         },
@@ -114,17 +121,17 @@ fun TrackChapterSelector(
 fun TrackScoreSelector(
     selection: String,
     onSelectionChange: (String) -> Unit,
-    selections: List<String>,
+    selections: ImmutableList<String>,
     onConfirm: () -> Unit,
     onDismissRequest: () -> Unit,
 ) {
     BaseSelector(
-        title = stringResource(R.string.score),
+        title = stringResource(MR.strings.score),
         content = {
             WheelTextPicker(
+                items = selections,
                 modifier = Modifier.align(Alignment.Center),
                 startIndex = selections.indexOf(selection).takeIf { it > 0 } ?: (selections.size / 2),
-                items = selections,
                 onSelectionChanged = { onSelectionChange(selections[it]) },
             )
         },
@@ -166,15 +173,15 @@ fun TrackDateSelector(
                 ) {
                     if (onRemove != null) {
                         TextButton(onClick = onRemove) {
-                            Text(text = stringResource(R.string.action_remove))
+                            Text(text = stringResource(MR.strings.action_remove))
                         }
                         Spacer(modifier = Modifier.weight(1f))
                     }
                     TextButton(onClick = onDismissRequest) {
-                        Text(text = stringResource(android.R.string.cancel))
+                        Text(text = stringResource(MR.strings.action_cancel))
                     }
                     TextButton(onClick = { onConfirm(pickerState.selectedDateMillis!!) }) {
-                        Text(text = stringResource(R.string.action_ok))
+                        Text(text = stringResource(MR.strings.action_ok))
                     }
                 }
             }
@@ -186,9 +193,9 @@ fun TrackDateSelector(
 private fun BaseSelector(
     title: String,
     content: @Composable BoxScope.() -> Unit,
-    thirdButton: @Composable (RowScope.() -> Unit)? = null,
     onConfirm: () -> Unit,
     onDismissRequest: () -> Unit,
+    thirdButton: @Composable (RowScope.() -> Unit)? = null,
 ) {
     AlertDialogContent(
         modifier = Modifier.windowInsetsPadding(WindowInsets.systemBars),
@@ -209,12 +216,36 @@ private fun BaseSelector(
                     Spacer(modifier = Modifier.weight(1f))
                 }
                 TextButton(onClick = onDismissRequest) {
-                    Text(text = stringResource(android.R.string.cancel))
+                    Text(text = stringResource(MR.strings.action_cancel))
                 }
                 TextButton(onClick = onConfirm) {
-                    Text(text = stringResource(R.string.action_ok))
+                    Text(text = stringResource(MR.strings.action_ok))
                 }
             }
         },
     )
+}
+
+@PreviewLightDark
+@Composable
+private fun TrackStatusSelectorPreviews() {
+    TachiyomiPreviewTheme {
+        Surface {
+            TrackStatusSelector(
+                selection = 1,
+                onSelectionChange = {},
+                selections = persistentMapOf(
+                    // Anilist values
+                    1 to MR.strings.reading,
+                    2 to MR.strings.plan_to_read,
+                    3 to MR.strings.completed,
+                    4 to MR.strings.on_hold,
+                    5 to MR.strings.dropped,
+                    6 to MR.strings.repeating,
+                ),
+                onConfirm = {},
+                onDismissRequest = {},
+            )
+        }
+    }
 }

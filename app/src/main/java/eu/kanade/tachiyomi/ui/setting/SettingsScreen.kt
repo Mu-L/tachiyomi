@@ -13,8 +13,9 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.more.settings.screen.SettingsAppearanceScreen
-import eu.kanade.presentation.more.settings.screen.SettingsBackupScreen
+import eu.kanade.presentation.more.settings.screen.SettingsDataScreen
 import eu.kanade.presentation.more.settings.screen.SettingsMainScreen
+import eu.kanade.presentation.more.settings.screen.SettingsTrackingScreen
 import eu.kanade.presentation.more.settings.screen.about.AboutScreen
 import eu.kanade.presentation.util.DefaultNavigatorScreenTransition
 import eu.kanade.presentation.util.LocalBackPress
@@ -22,22 +23,22 @@ import eu.kanade.presentation.util.Screen
 import eu.kanade.presentation.util.isTabletUi
 import tachiyomi.presentation.core.components.TwoPanelBox
 
-class SettingsScreen private constructor(
-    val toBackup: Boolean,
-    val toAbout: Boolean,
+class SettingsScreen(
+    private val destination: Int? = null,
 ) : Screen() {
+
+    constructor(destination: Destination) : this(destination.id)
 
     @Composable
     override fun Content() {
         val parentNavigator = LocalNavigator.currentOrThrow
         if (!isTabletUi()) {
             Navigator(
-                screen = if (toBackup) {
-                    SettingsBackupScreen
-                } else if (toAbout) {
-                    AboutScreen
-                } else {
-                    SettingsMainScreen
+                screen = when (destination) {
+                    Destination.About.id -> AboutScreen
+                    Destination.DataAndStorage.id -> SettingsDataScreen
+                    Destination.Tracking.id -> SettingsTrackingScreen
+                    else -> SettingsMainScreen
                 },
                 content = {
                     val pop: () -> Unit = {
@@ -54,12 +55,11 @@ class SettingsScreen private constructor(
             )
         } else {
             Navigator(
-                screen = if (toBackup) {
-                    SettingsBackupScreen
-                } else if (toAbout) {
-                    AboutScreen
-                } else {
-                    SettingsAppearanceScreen
+                screen = when (destination) {
+                    Destination.About.id -> AboutScreen
+                    Destination.DataAndStorage.id -> SettingsDataScreen
+                    Destination.Tracking.id -> SettingsTrackingScreen
+                    else -> SettingsAppearanceScreen
                 },
             ) {
                 val insets = WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)
@@ -78,11 +78,9 @@ class SettingsScreen private constructor(
         }
     }
 
-    companion object {
-        fun toMainScreen() = SettingsScreen(toBackup = false, toAbout = false)
-
-        fun toBackupScreen() = SettingsScreen(toBackup = true, toAbout = false)
-
-        fun toAboutScreen() = SettingsScreen(toBackup = false, toAbout = true)
+    sealed class Destination(val id: Int) {
+        data object About : Destination(0)
+        data object DataAndStorage : Destination(1)
+        data object Tracking : Destination(2)
     }
 }

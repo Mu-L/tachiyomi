@@ -1,20 +1,22 @@
-import org.jmailen.gradle.kotlinter.KotlinterExtension
-import org.jmailen.gradle.kotlinter.KotlinterPlugin
+import org.jlleitschuh.gradle.ktlint.KtlintExtension
+import org.jlleitschuh.gradle.ktlint.KtlintPlugin
 
-apply<KotlinterPlugin>()
+apply<KtlintPlugin>()
 
-extensions.configure<KotlinterExtension>("kotlinter") {
-    experimentalRules = true
+extensions.configure<KtlintExtension>("ktlint") {
+    version.set("0.50.0")
+    android.set(true)
+    enableExperimentalRules.set(true)
 
-    disabledRules = arrayOf(
-        "experimental:argument-list-wrapping", // Doesn't play well with Android Studio
-        "filename", // Often broken to give a more general name
-    )
-}
+    filter {
+        exclude("**/generated/**")
 
-tasks {
-    named<DefaultTask>("preBuild").configure {
-        if (!System.getenv("CI").toBoolean())
-            dependsOn("formatKotlin")
+        // For some reason this is needed for Kotlin MPP
+        exclude { tree ->
+            val path = tree.file.path
+            listOf("/generated/").any {
+                path.contains(it)
+            }
+        }
     }
 }

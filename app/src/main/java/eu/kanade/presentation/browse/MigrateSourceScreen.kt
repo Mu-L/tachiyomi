@@ -20,21 +20,22 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import eu.kanade.domain.source.interactor.SetMigrateSorting
 import eu.kanade.presentation.browse.components.BaseSourceItem
 import eu.kanade.presentation.browse.components.SourceIcon
-import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.ui.browse.migration.sources.MigrateSourceScreenModel
 import eu.kanade.tachiyomi.util.system.copyToClipboard
+import kotlinx.collections.immutable.ImmutableList
 import tachiyomi.domain.source.model.Source
+import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.Badge
 import tachiyomi.presentation.core.components.BadgeGroup
 import tachiyomi.presentation.core.components.ScrollbarLazyColumn
 import tachiyomi.presentation.core.components.Scroller.STICKY_HEADER_KEY_PREFIX
 import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.components.material.topSmallPaddingValues
+import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.EmptyScreen
 import tachiyomi.presentation.core.screens.LoadingScreen
 import tachiyomi.presentation.core.theme.header
@@ -51,9 +52,9 @@ fun MigrateSourceScreen(
 ) {
     val context = LocalContext.current
     when {
-        state.isLoading -> LoadingScreen(modifier = Modifier.padding(contentPadding))
+        state.isLoading -> LoadingScreen(Modifier.padding(contentPadding))
         state.isEmpty -> EmptyScreen(
-            textResource = R.string.information_empty_library,
+            stringRes = MR.strings.information_empty_library,
             modifier = Modifier.padding(contentPadding),
         )
         else ->
@@ -75,7 +76,7 @@ fun MigrateSourceScreen(
 
 @Composable
 private fun MigrateSourceList(
-    list: List<Pair<Source, Long>>,
+    list: ImmutableList<Pair<Source, Long>>,
     contentPadding: PaddingValues,
     onClickItem: (Source) -> Unit,
     onLongClickItem: (Source) -> Unit,
@@ -95,21 +96,33 @@ private fun MigrateSourceList(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = stringResource(R.string.migration_selection_prompt),
+                    text = stringResource(MR.strings.migration_selection_prompt),
                     modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.header,
                 )
 
                 IconButton(onClick = onToggleSortingMode) {
                     when (sortingMode) {
-                        SetMigrateSorting.Mode.ALPHABETICAL -> Icon(Icons.Outlined.SortByAlpha, contentDescription = stringResource(R.string.action_sort_alpha))
-                        SetMigrateSorting.Mode.TOTAL -> Icon(Icons.Outlined.Numbers, contentDescription = stringResource(R.string.action_sort_count))
+                        SetMigrateSorting.Mode.ALPHABETICAL -> Icon(
+                            Icons.Outlined.SortByAlpha,
+                            contentDescription = stringResource(MR.strings.action_sort_alpha),
+                        )
+                        SetMigrateSorting.Mode.TOTAL -> Icon(
+                            Icons.Outlined.Numbers,
+                            contentDescription = stringResource(MR.strings.action_sort_count),
+                        )
                     }
                 }
                 IconButton(onClick = onToggleSortingDirection) {
                     when (sortingDirection) {
-                        SetMigrateSorting.Direction.ASCENDING -> Icon(Icons.Outlined.ArrowUpward, contentDescription = stringResource(R.string.action_asc))
-                        SetMigrateSorting.Direction.DESCENDING -> Icon(Icons.Outlined.ArrowDownward, contentDescription = stringResource(R.string.action_desc))
+                        SetMigrateSorting.Direction.ASCENDING -> Icon(
+                            Icons.Outlined.ArrowUpward,
+                            contentDescription = stringResource(MR.strings.action_asc),
+                        )
+                        SetMigrateSorting.Direction.DESCENDING -> Icon(
+                            Icons.Outlined.ArrowDownward,
+                            contentDescription = stringResource(MR.strings.action_desc),
+                        )
                     }
                 }
             }
@@ -132,11 +145,11 @@ private fun MigrateSourceList(
 
 @Composable
 private fun MigrateSourceItem(
-    modifier: Modifier = Modifier,
     source: Source,
     count: Long,
     onClickItem: () -> Unit,
     onLongClickItem: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     BaseSourceItem(
         modifier = modifier,
@@ -178,7 +191,7 @@ private fun MigrateSourceItem(
                     if (source.isStub) {
                         Text(
                             modifier = Modifier.secondaryItemAlpha(),
-                            text = stringResource(R.string.not_installed),
+                            text = stringResource(MR.strings.not_installed),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             style = MaterialTheme.typography.bodySmall,

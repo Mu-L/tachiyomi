@@ -6,9 +6,9 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 buildscript {
     dependencies {
         classpath(libs.android.shortcut.gradle)
-        classpath(libs.google.services.gradle)
         classpath(libs.aboutLibraries.gradle)
         classpath(libs.sqldelight.gradle)
+        classpath(libs.moko.gradle)
     }
 }
 
@@ -32,6 +32,7 @@ subprojects {
 
     plugins.withType<BasePlugin> {
         plugins.apply("tachiyomi.lint")
+
         configure<BaseExtension> {
             compileSdkVersion(AndroidConfig.compileSdk)
             defaultConfig {
@@ -56,5 +57,5 @@ subprojects {
 }
 
 tasks.register<Delete>("clean") {
-    delete(rootProject.buildDir)
+    delete(rootProject.layout.buildDirectory)
 }

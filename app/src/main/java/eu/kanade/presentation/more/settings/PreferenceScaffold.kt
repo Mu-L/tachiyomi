@@ -1,33 +1,24 @@
 package eu.kanade.presentation.more.settings
 
-import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.res.stringResource
-import eu.kanade.presentation.components.UpIcon
+import dev.icerock.moko.resources.StringResource
+import eu.kanade.presentation.components.AppBar
 import tachiyomi.presentation.core.components.material.Scaffold
+import tachiyomi.presentation.core.i18n.stringResource
 
 @Composable
 fun PreferenceScaffold(
-    @StringRes titleRes: Int,
+    titleRes: StringResource,
     actions: @Composable RowScope.() -> Unit = {},
     onBackPressed: (() -> Unit)? = null,
     itemsProvider: @Composable () -> List<Preference>,
 ) {
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(text = stringResource(titleRes)) },
-                navigationIcon = {
-                    if (onBackPressed != null) {
-                        IconButton(onClick = onBackPressed) {
-                            UpIcon()
-                        }
-                    }
-                },
+            AppBar(
+                title = stringResource(titleRes),
+                navigateUp = onBackPressed,
                 actions = actions,
                 scrollBehavior = it,
             )

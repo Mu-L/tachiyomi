@@ -17,13 +17,17 @@ jobs:
 
     steps:
       - name: Clone repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Validate Gradle Wrapper
         uses: gradle/wrapper-validation-action@v1
 
+      - name: Setup Android SDK
+        run: |
+          ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager "build-tools;29.0.3"
+
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: 17
           distribution: adopt
@@ -31,7 +35,7 @@ jobs:
       - name: Build app and run unit tests
         uses: gradle/gradle-command-action@v2
         with:
-          arguments: lintKotlin assembleStandardRelease testReleaseUnitTest
+          arguments: ktlintCheck assembleStandardRelease testReleaseUnitTest
 
       # Sign APK and create release for tags
 
@@ -104,3 +108,13 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  update-website:
+    needs: [build]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') && github.repository == 'tachiyomiorg/tachiyomi'
+    steps:
+      - name: Trigger Netlify build hook
+        run: curl -s -X POST -d {} "https://api.netlify.com/build_hooks/${TOKEN}"
+        env:
+          TOKEN: ${{ secrets.NETLIFY_HOOK_RELEASE }}

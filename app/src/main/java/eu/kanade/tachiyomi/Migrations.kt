@@ -7,25 +7,27 @@ import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
-import eu.kanade.tachiyomi.data.backup.BackupCreateJob
+import eu.kanade.tachiyomi.data.backup.create.BackupCreateJob
 import eu.kanade.tachiyomi.data.library.LibraryUpdateJob
-import eu.kanade.tachiyomi.data.track.TrackManager
+import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.network.NetworkPreferences
 import eu.kanade.tachiyomi.network.PREF_DOH_CLOUDFLARE
-import eu.kanade.tachiyomi.ui.reader.setting.OrientationType
+import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.util.system.DeviceUtil
-import eu.kanade.tachiyomi.util.system.isReleaseBuildType
 import eu.kanade.tachiyomi.util.system.toast
 import eu.kanade.tachiyomi.util.system.workManager
+import tachiyomi.core.preference.Preference
 import tachiyomi.core.preference.PreferenceStore
 import tachiyomi.core.preference.TriState
+import tachiyomi.core.preference.getAndSet
 import tachiyomi.core.preference.getEnum
 import tachiyomi.core.preference.minusAssign
 import tachiyomi.core.preference.plusAssign
 import tachiyomi.domain.backup.service.BackupPreferences
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.library.service.LibraryPreferences.Companion.MANGA_NON_COMPLETED
+import tachiyomi.i18n.MR
 import java.io.File
 
 object Migrations {
@@ -46,9 +48,9 @@ object Migrations {
         libraryPreferences: LibraryPreferences,
         readerPreferences: ReaderPreferences,
         backupPreferences: BackupPreferences,
-        trackManager: TrackManager,
+        trackerManager: TrackerManager,
     ): Boolean {
-        val lastVersionCode = preferenceStore.getInt("last_version_code", 0)
+        val lastVersionCode = preferenceStore.getInt(Preference.appStateKey("last_version_code"), 0)
         val oldVersion = lastVersionCode.get()
         if (oldVersion < BuildConfig.VERSION_CODE) {
             lastVersionCode.set(BuildConfig.VERSION_CODE)
@@ -64,10 +66,6 @@ object Migrations {
 
             val prefs = PreferenceManager.getDefaultSharedPreferences(context)
 
-            if (oldVersion < 14) {
-                // Restore jobs after upgrading to Evernote's job scheduler.
-                LibraryUpdateJob.setupTask(context)
-            }
             if (oldVersion < 15) {
                 // Delete internal chapter cache dir.
                 File(context.cacheDir, "chapter_disk_cache").deleteRecursively()
@@ -94,18 +92,13 @@ object Migrations {
                     }
                 }
             }
-            if (oldVersion < 43) {
-                // Restore jobs after migrating from Evernote's job scheduler to WorkManager.
-                LibraryUpdateJob.setupTask(context)
-                BackupCreateJob.setupTask(context)
-            }
             if (oldVersion < 44) {
                 // Reset sorting preference if using removed sort by source
-                val oldSortingMode = prefs.getInt(libraryPreferences.librarySortingMode().key(), 0)
+                val oldSortingMode = prefs.getInt(libraryPreferences.sortingMode().key(), 0)
 
                 if (oldSortingMode == 5) { // SOURCE = 5
                     prefs.edit {
-                        putInt(libraryPreferences.librarySortingMode().key(), 0) // ALPHABETICAL = 0
+                        putInt(libraryPreferences.sortingMode().key(), 0) // ALPHABETICAL = 0
                     }
                 }
             }
@@ -120,13 +113,22 @@ object Migrations {
                     }
                 }
                 prefs.edit {
-                    putInt(libraryPreferences.filterDownloaded().key(), convertBooleanPrefToTriState("pref_filter_downloaded_key"))
+                    putInt(
+                        libraryPreferences.filterDownloaded().key(),
+                        convertBooleanPrefToTriState("pref_filter_downloaded_key"),
+                    )
                     remove("pref_filter_downloaded_key")
 
-                    putInt(libraryPreferences.filterUnread().key(), convertBooleanPrefToTriState("pref_filter_unread_key"))
+                    putInt(
+                        libraryPreferences.filterUnread().key(),
+                        convertBooleanPrefToTriState("pref_filter_unread_key"),
+                    )
                     remove("pref_filter_unread_key")
 
-                    putInt(libraryPreferences.filterCompleted().key(), convertBooleanPrefToTriState("pref_filter_completed_key"))
+                    putInt(
+                        libraryPreferences.filterCompleted().key(),
+                        convertBooleanPrefToTriState("pref_filter_completed_key"),
+                    )
                     remove("pref_filter_completed_key")
                 }
             }
@@ -134,9 +136,9 @@ object Migrations {
                 // Force MAL log out due to login flow change
                 // v52: switched from scraping to WebView
                 // v53: switched from WebView to OAuth
-                if (trackManager.myAnimeList.isLogged) {
-                    trackManager.myAnimeList.logout()
-                    context.toast(R.string.myanimelist_relogin)
+                if (trackerManager.myAnimeList.isLoggedIn) {
+                    trackerManager.myAnimeList.logout()
+                    context.toast(MR.strings.myanimelist_relogin)
                 }
             }
             if (oldVersion < 57) {
@@ -160,12 +162,12 @@ object Migrations {
             if (oldVersion < 60) {
                 // Migrate Rotation and Viewer values to default values for viewer_flags
                 val newOrientation = when (prefs.getInt("pref_rotation_type_key", 1)) {
-                    1 -> OrientationType.FREE.flagValue
-                    2 -> OrientationType.PORTRAIT.flagValue
-                    3 -> OrientationType.LANDSCAPE.flagValue
-                    4 -> OrientationType.LOCKED_PORTRAIT.flagValue
-                    5 -> OrientationType.LOCKED_LANDSCAPE.flagValue
-                    else -> OrientationType.FREE.flagValue
+                    1 -> ReaderOrientation.FREE.flagValue
+                    2 -> ReaderOrientation.PORTRAIT.flagValue
+                    3 -> ReaderOrientation.LANDSCAPE.flagValue
+                    4 -> ReaderOrientation.LOCKED_PORTRAIT.flagValue
+                    5 -> ReaderOrientation.LOCKED_LANDSCAPE.flagValue
+                    else -> ReaderOrientation.FREE.flagValue
                 }
 
                 // Reading mode flag and prefValue is the same value
@@ -180,14 +182,14 @@ object Migrations {
             }
             if (oldVersion < 61) {
                 // Handle removed every 1 or 2 hour library updates
-                val updateInterval = libraryPreferences.libraryUpdateInterval().get()
+                val updateInterval = libraryPreferences.autoUpdateInterval().get()
                 if (updateInterval == 1 || updateInterval == 2) {
-                    libraryPreferences.libraryUpdateInterval().set(3)
+                    libraryPreferences.autoUpdateInterval().set(3)
                     LibraryUpdateJob.setupTask(context, 3)
                 }
             }
             if (oldVersion < 64) {
-                val oldSortingMode = prefs.getInt(libraryPreferences.librarySortingMode().key(), 0)
+                val oldSortingMode = prefs.getInt(libraryPreferences.sortingMode().key(), 0)
                 val oldSortingDirection = prefs.getBoolean("library_sorting_ascending", true)
 
                 val newSortingMode = when (oldSortingMode) {
@@ -208,12 +210,12 @@ object Migrations {
                 }
 
                 prefs.edit(commit = true) {
-                    remove(libraryPreferences.librarySortingMode().key())
+                    remove(libraryPreferences.sortingMode().key())
                     remove("library_sorting_ascending")
                 }
 
                 prefs.edit {
-                    putString(libraryPreferences.librarySortingMode().key(), newSortingMode)
+                    putString(libraryPreferences.sortingMode().key(), newSortingMode)
                     putString("library_sorting_ascending", newSortingDirection)
                 }
             }
@@ -224,16 +226,16 @@ object Migrations {
             }
             if (oldVersion < 71) {
                 // Handle removed every 3, 4, 6, and 8 hour library updates
-                val updateInterval = libraryPreferences.libraryUpdateInterval().get()
+                val updateInterval = libraryPreferences.autoUpdateInterval().get()
                 if (updateInterval in listOf(3, 4, 6, 8)) {
-                    libraryPreferences.libraryUpdateInterval().set(12)
+                    libraryPreferences.autoUpdateInterval().set(12)
                     LibraryUpdateJob.setupTask(context, 12)
                 }
             }
             if (oldVersion < 72) {
                 val oldUpdateOngoingOnly = prefs.getBoolean("pref_update_only_non_completed_key", true)
                 if (!oldUpdateOngoingOnly) {
-                    libraryPreferences.libraryUpdateMangaRestriction() -= MANGA_NON_COMPLETED
+                    libraryPreferences.autoUpdateMangaRestrictions() -= MANGA_NON_COMPLETED
                 }
             }
             if (oldVersion < 75) {
@@ -241,12 +243,12 @@ object Migrations {
                 if (oldSecureScreen) {
                     securityPreferences.secureScreen().set(SecurityPreferences.SecureScreenMode.ALWAYS)
                 }
-                if (DeviceUtil.isMiui && basePreferences.extensionInstaller().get() == BasePreferences.ExtensionInstaller.PACKAGEINSTALLER) {
+                if (
+                    DeviceUtil.isMiui &&
+                    basePreferences.extensionInstaller().get() == BasePreferences.ExtensionInstaller.PACKAGEINSTALLER
+                ) {
                     basePreferences.extensionInstaller().set(BasePreferences.ExtensionInstaller.LEGACY)
                 }
-            }
-            if (oldVersion < 76) {
-                BackupCreateJob.setupTask(context)
             }
             if (oldVersion < 77) {
                 val oldReaderTap = prefs.getBoolean("reader_tap", false)
@@ -258,27 +260,29 @@ object Migrations {
             if (oldVersion < 81) {
                 // Handle renamed enum values
                 prefs.edit {
-                    val newSortingMode = when (val oldSortingMode = prefs.getString(libraryPreferences.librarySortingMode().key(), "ALPHABETICAL")) {
+                    val newSortingMode = when (
+                        val oldSortingMode = prefs.getString(
+                            libraryPreferences.sortingMode().key(),
+                            "ALPHABETICAL",
+                        )
+                    ) {
                         "LAST_CHECKED" -> "LAST_MANGA_UPDATE"
                         "UNREAD" -> "UNREAD_COUNT"
                         "DATE_FETCHED" -> "CHAPTER_FETCH_DATE"
                         else -> oldSortingMode
                     }
-                    putString(libraryPreferences.librarySortingMode().key(), newSortingMode)
+                    putString(libraryPreferences.sortingMode().key(), newSortingMode)
                 }
             }
             if (oldVersion < 82) {
                 prefs.edit {
-                    val sort = prefs.getString(libraryPreferences.librarySortingMode().key(), null) ?: return@edit
+                    val sort = prefs.getString(libraryPreferences.sortingMode().key(), null) ?: return@edit
                     val direction = prefs.getString("library_sorting_ascending", "ASCENDING")!!
-                    putString(libraryPreferences.librarySortingMode().key(), "$sort,$direction")
+                    putString(libraryPreferences.sortingMode().key(), "$sort,$direction")
                     remove("library_sorting_ascending")
                 }
             }
             if (oldVersion < 84) {
-                if (backupPreferences.numberOfBackups().get() == 1) {
-                    backupPreferences.numberOfBackups().set(2)
-                }
                 if (backupPreferences.backupInterval().get() == 0) {
                     backupPreferences.backupInterval().set(12)
                     BackupCreateJob.setupTask(context)
@@ -341,7 +345,7 @@ object Migrations {
                     "pref_filter_library_started",
                     "pref_filter_library_bookmarked",
                     "pref_filter_library_completed",
-                ) + trackManager.services.map { "pref_filter_library_tracked_${it.id}" }
+                ) + trackerManager.trackers.map { "pref_filter_library_tracked_${it.id}" }
 
                 prefKeys.forEach { key ->
                     val pref = preferenceStore.getInt(key, 0)
@@ -358,14 +362,57 @@ object Migrations {
                     }
                 }
             }
-            if (oldVersion < 100) {
-                BackupCreateJob.setupTask(context)
+            if (oldVersion < 105) {
+                val pref = libraryPreferences.autoUpdateDeviceRestrictions()
+                if (pref.isSet() && "battery_not_low" in pref.get()) {
+                    pref.getAndSet { it - "battery_not_low" }
+                }
             }
-            if (oldVersion < 102) {
-                // This was accidentally visible from the reader settings sheet, but should always
-                // be disabled in release builds.
-                if (isReleaseBuildType) {
-                    readerPreferences.longStripSplitWebtoon().set(false)
+            if (oldVersion < 106) {
+                val pref = preferenceStore.getInt("relative_time", 7)
+                if (pref.get() == 0) {
+                    uiPreferences.relativeTime().set(false)
+                }
+            }
+            if (oldVersion < 113) {
+                val prefsToReplace = listOf(
+                    "pref_download_only",
+                    "incognito_mode",
+                    "last_catalogue_source",
+                    "trusted_signatures",
+                    "last_app_closed",
+                    "library_update_last_timestamp",
+                    "library_unseen_updates_count",
+                    "last_used_category",
+                    "last_app_check",
+                    "last_ext_check",
+                    "last_version_code",
+                    "storage_dir",
+                )
+                replacePreferences(
+                    preferenceStore = preferenceStore,
+                    filterPredicate = { it.key in prefsToReplace },
+                    newKey = { Preference.appStateKey(it) },
+                )
+
+                // Deleting old download cache index files, but might as well clear it all out
+                context.cacheDir.deleteRecursively()
+            }
+            if (oldVersion < 114) {
+                sourcePreferences.extensionRepos().getAndSet {
+                    it.map { repo -> "https://raw.githubusercontent.com/$repo/repo" }.toSet()
+                }
+            }
+            if (oldVersion < 116) {
+                replacePreferences(
+                    preferenceStore = preferenceStore,
+                    filterPredicate = { it.key.startsWith("pref_mangasync_") || it.key.startsWith("track_token_") },
+                    newKey = { Preference.privateKey(it) },
+                )
+            }
+            if (oldVersion < 117) {
+                prefs.edit {
+                    remove(Preference.appStateKey("trusted_signatures"))
                 }
             }
             return true
@@ -373,4 +420,42 @@ object Migrations {
 
         return false
     }
+}
+
+@Suppress("UNCHECKED_CAST")
+private fun replacePreferences(
+    preferenceStore: PreferenceStore,
+    filterPredicate: (Map.Entry<String, Any?>) -> Boolean,
+    newKey: (String) -> String,
+) {
+    preferenceStore.getAll()
+        .filter(filterPredicate)
+        .forEach { (key, value) ->
+            when (value) {
+                is Int -> {
+                    preferenceStore.getInt(newKey(key)).set(value)
+                    preferenceStore.getInt(key).delete()
+                }
+                is Long -> {
+                    preferenceStore.getLong(newKey(key)).set(value)
+                    preferenceStore.getLong(key).delete()
+                }
+                is Float -> {
+                    preferenceStore.getFloat(newKey(key)).set(value)
+                    preferenceStore.getFloat(key).delete()
+                }
+                is String -> {
+                    preferenceStore.getString(newKey(key)).set(value)
+                    preferenceStore.getString(key).delete()
+                }
+                is Boolean -> {
+                    preferenceStore.getBoolean(newKey(key)).set(value)
+                    preferenceStore.getBoolean(key).delete()
+                }
+                is Set<*> -> (value as? Set<String>)?.let {
+                    preferenceStore.getStringSet(newKey(key)).set(value)
+                    preferenceStore.getStringSet(key).delete()
+                }
+            }
+        }
 }

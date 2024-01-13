@@ -1,20 +1,22 @@
 package eu.kanade.tachiyomi.data.track.komga
 
-import android.content.Context
 import android.graphics.Color
-import androidx.annotation.StringRes
+import dev.icerock.moko.resources.StringResource
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.database.models.Track
-import eu.kanade.tachiyomi.data.track.EnhancedTrackService
-import eu.kanade.tachiyomi.data.track.TrackService
+import eu.kanade.tachiyomi.data.track.BaseTracker
+import eu.kanade.tachiyomi.data.track.EnhancedTracker
 import eu.kanade.tachiyomi.data.track.model.TrackSearch
 import eu.kanade.tachiyomi.source.Source
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.persistentListOf
 import okhttp3.Dns
 import okhttp3.OkHttpClient
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.i18n.MR
 import tachiyomi.domain.track.model.Track as DomainTrack
 
-class Komga(private val context: Context, id: Long) : TrackService(id), EnhancedTrackService {
+class Komga(id: Long) : BaseTracker(id, "Komga"), EnhancedTracker {
 
     companion object {
         const val UNREAD = 1
@@ -27,10 +29,7 @@ class Komga(private val context: Context, id: Long) : TrackService(id), Enhanced
             .dns(Dns.SYSTEM) // don't use DNS over HTTPS as it breaks IP addressing
             .build()
 
-    val api by lazy { KomgaApi(client) }
-
-    @StringRes
-    override fun nameRes() = R.string.tracker_komga
+    val api by lazy { KomgaApi(id, client) }
 
     override fun getLogo() = R.drawable.ic_tracker_komga
 
@@ -38,11 +37,10 @@ class Komga(private val context: Context, id: Long) : TrackService(id), Enhanced
 
     override fun getStatusList() = listOf(UNREAD, READING, COMPLETED)
 
-    @StringRes
-    override fun getStatus(status: Int): Int? = when (status) {
-        UNREAD -> R.string.unread
-        READING -> R.string.reading
-        COMPLETED -> R.string.completed
+    override fun getStatus(status: Int): StringResource? = when (status) {
+        UNREAD -> MR.strings.unread
+        READING -> MR.strings.reading
+        COMPLETED -> MR.strings.completed
         else -> null
     }
 
@@ -52,9 +50,9 @@ class Komga(private val context: Context, id: Long) : TrackService(id), Enhanced
 
     override fun getCompletionStatus(): Int = COMPLETED
 
-    override fun getScoreList(): List<String> = emptyList()
+    override fun getScoreList(): ImmutableList<String> = persistentListOf()
 
-    override fun displayScore(track: Track): String = ""
+    override fun displayScore(track: DomainTrack): String = ""
 
     override suspend fun update(track: Track, didReadChapter: Boolean): Track {
         if (track.status != COMPLETED) {
@@ -89,7 +87,7 @@ class Komga(private val context: Context, id: Long) : TrackService(id), Enhanced
         saveCredentials("user", "pass")
     }
 
-    // TrackService.isLogged works by checking that credentials are saved.
+    // [Tracker].isLogged works by checking that credentials are saved.
     // By saving dummy, unused credentials, we can activate the tracker simply by login/logout
     override fun loginNoop() {
         saveCredentials("user", "pass")

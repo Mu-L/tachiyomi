@@ -1,10 +1,11 @@
 package eu.kanade.tachiyomi.ui.category
 
-import androidx.annotation.StringRes
 import androidx.compose.runtime.Immutable
 import cafe.adriel.voyager.core.model.StateScreenModel
-import cafe.adriel.voyager.core.model.coroutineScope
-import eu.kanade.tachiyomi.R
+import cafe.adriel.voyager.core.model.screenModelScope
+import dev.icerock.moko.resources.StringResource
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -16,6 +17,7 @@ import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.RenameCategory
 import tachiyomi.domain.category.interactor.ReorderCategory
 import tachiyomi.domain.category.model.Category
+import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -31,12 +33,14 @@ class CategoryScreenModel(
     val events = _events.receiveAsFlow()
 
     init {
-        coroutineScope.launch {
+        screenModelScope.launch {
             getCategories.subscribe()
                 .collectLatest { categories ->
                     mutableState.update {
                         CategoryScreenState.Success(
-                            categories = categories.filterNot(Category::isSystemCategory),
+                            categories = categories
+                                .filterNot(Category::isSystemCategory)
+                                .toImmutableList(),
                         )
                     }
                 }
@@ -44,7 +48,7 @@ class CategoryScreenModel(
     }
 
     fun createCategory(name: String) {
-        coroutineScope.launch {
+        screenModelScope.launch {
             when (createCategoryWithName.await(name)) {
                 is CreateCategoryWithName.Result.InternalError -> _events.send(CategoryEvent.InternalError)
                 else -> {}
@@ -53,7 +57,7 @@ class CategoryScreenModel(
     }
 
     fun deleteCategory(categoryId: Long) {
-        coroutineScope.launch {
+        screenModelScope.launch {
             when (deleteCategory.await(categoryId = categoryId)) {
                 is DeleteCategory.Result.InternalError -> _events.send(CategoryEvent.InternalError)
                 else -> {}
@@ -61,8 +65,17 @@ class CategoryScreenModel(
         }
     }
 
+    fun sortAlphabetically() {
+        screenModelScope.launch {
+            when (reorderCategory.sortAlphabetically()) {
+                is ReorderCategory.Result.InternalError -> _events.send(CategoryEvent.InternalError)
+                else -> {}
+            }
+        }
+    }
+
     fun moveUp(category: Category) {
-        coroutineScope.launch {
+        screenModelScope.launch {
             when (reorderCategory.moveUp(category)) {
                 is ReorderCategory.Result.InternalError -> _events.send(CategoryEvent.InternalError)
                 else -> {}
@@ -71,7 +84,7 @@ class CategoryScreenModel(
     }
 
     fun moveDown(category: Category) {
-        coroutineScope.launch {
+        screenModelScope.launch {
             when (reorderCategory.moveDown(category)) {
                 is ReorderCategory.Result.InternalError -> _events.send(CategoryEvent.InternalError)
                 else -> {}
@@ -80,7 +93,7 @@ class CategoryScreenModel(
     }
 
     fun renameCategory(category: Category, name: String) {
-        coroutineScope.launch {
+        screenModelScope.launch {
             when (renameCategory.await(category, name)) {
                 is RenameCategory.Result.InternalError -> _events.send(CategoryEvent.InternalError)
                 else -> {}
@@ -109,13 +122,14 @@ class CategoryScreenModel(
 
 sealed interface CategoryDialog {
     data object Create : CategoryDialog
+    data object SortAlphabetically : CategoryDialog
     data class Rename(val category: Category) : CategoryDialog
     data class Delete(val category: Category) : CategoryDialog
 }
 
 sealed interface CategoryEvent {
-    sealed class LocalizedMessage(@StringRes val stringRes: Int) : CategoryEvent
-    data object InternalError : LocalizedMessage(R.string.internal_error)
+    sealed class LocalizedMessage(val stringRes: StringResource) : CategoryEvent
+    data object InternalError : LocalizedMessage(MR.strings.internal_error)
 }
 
 sealed interface CategoryScreenState {
@@ -125,7 +139,7 @@ sealed interface CategoryScreenState {
 
     @Immutable
     data class Success(
-        val categories: List<Category>,
+        val categories: ImmutableList<Category>,
         val dialog: CategoryDialog? = null,
     ) : CategoryScreenState {
 

@@ -8,26 +8,26 @@ import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
-import eu.kanade.domain.ui.UiPreferences
+import androidx.compose.ui.tooling.preview.PreviewLightDark
+import androidx.compose.ui.tooling.preview.PreviewParameter
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.AppBarActions
 import eu.kanade.presentation.components.AppBarTitle
-import eu.kanade.presentation.components.RelativeDateHeader
 import eu.kanade.presentation.components.SearchToolbar
+import eu.kanade.presentation.components.relativeDateText
 import eu.kanade.presentation.history.components.HistoryItem
-import eu.kanade.tachiyomi.R
+import eu.kanade.presentation.theme.TachiyomiPreviewTheme
 import eu.kanade.tachiyomi.ui.history.HistoryScreenModel
+import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.domain.history.model.HistoryWithRelations
+import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.FastScrollLazyColumn
+import tachiyomi.presentation.core.components.ListGroupHeader
 import tachiyomi.presentation.core.components.material.Scaffold
+import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.EmptyScreen
 import tachiyomi.presentation.core.screens.LoadingScreen
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
-import java.text.DateFormat
 import java.util.Date
 
 @Composable
@@ -42,14 +42,14 @@ fun HistoryScreen(
     Scaffold(
         topBar = { scrollBehavior ->
             SearchToolbar(
-                titleContent = { AppBarTitle(stringResource(R.string.history)) },
+                titleContent = { AppBarTitle(stringResource(MR.strings.history)) },
                 searchQuery = state.searchQuery,
                 onChangeSearchQuery = onSearchQueryChange,
                 actions = {
                     AppBarActions(
-                        listOf(
+                        persistentListOf(
                             AppBar.Action(
-                                title = stringResource(R.string.pref_clear_history),
+                                title = stringResource(MR.strings.pref_clear_history),
                                 icon = Icons.Outlined.DeleteSweep,
                                 onClick = {
                                     onDialogChange(HistoryScreenModel.Dialog.DeleteAll)
@@ -65,15 +65,15 @@ fun HistoryScreen(
     ) { contentPadding ->
         state.list.let {
             if (it == null) {
-                LoadingScreen(modifier = Modifier.padding(contentPadding))
+                LoadingScreen(Modifier.padding(contentPadding))
             } else if (it.isEmpty()) {
                 val msg = if (!state.searchQuery.isNullOrEmpty()) {
-                    R.string.no_results_found
+                    MR.strings.no_results_found
                 } else {
-                    R.string.information_no_recent_manga
+                    MR.strings.information_no_recent_manga
                 }
                 EmptyScreen(
-                    textResource = msg,
+                    stringRes = msg,
                     modifier = Modifier.padding(contentPadding),
                 )
             } else {
@@ -96,10 +96,7 @@ private fun HistoryScreenContent(
     onClickCover: (HistoryWithRelations) -> Unit,
     onClickResume: (HistoryWithRelations) -> Unit,
     onClickDelete: (HistoryWithRelations) -> Unit,
-    preferences: UiPreferences = Injekt.get(),
 ) {
-    val dateFormat: DateFormat = remember { UiPreferences.dateFormat(preferences.dateFormat().get()) }
-
     FastScrollLazyColumn(
         contentPadding = contentPadding,
     ) {
@@ -115,10 +112,9 @@ private fun HistoryScreenContent(
         ) { item ->
             when (item) {
                 is HistoryUiModel.Header -> {
-                    RelativeDateHeader(
+                    ListGroupHeader(
                         modifier = Modifier.animateItemPlacement(),
-                        date = item.date,
-                        dateFormat = dateFormat,
+                        text = relativeDateText(item.date),
                     )
                 }
                 is HistoryUiModel.Item -> {
@@ -139,4 +135,22 @@ private fun HistoryScreenContent(
 sealed interface HistoryUiModel {
     data class Header(val date: Date) : HistoryUiModel
     data class Item(val item: HistoryWithRelations) : HistoryUiModel
+}
+
+@PreviewLightDark
+@Composable
+internal fun HistoryScreenPreviews(
+    @PreviewParameter(HistoryScreenModelStateProvider::class)
+    historyState: HistoryScreenModel.State,
+) {
+    TachiyomiPreviewTheme {
+        HistoryScreen(
+            state = historyState,
+            snackbarHostState = SnackbarHostState(),
+            onSearchQueryChange = {},
+            onClickCover = {},
+            onClickResume = { _, _ -> run {} },
+            onDialogChange = {},
+        )
+    }
 }

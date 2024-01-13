@@ -7,9 +7,6 @@ import android.view.View
 import androidx.appcompat.view.ContextThemeWrapper
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -34,12 +31,12 @@ import androidx.preference.forEach
 import androidx.preference.getOnBindEditTextListener
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
-import eu.kanade.presentation.components.UpIcon
+import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.preference.SharedPreferencesDataStore
 import eu.kanade.tachiyomi.source.ConfigurableSource
-import eu.kanade.tachiyomi.source.getPreferenceKey
+import eu.kanade.tachiyomi.source.sourcePreferences
 import eu.kanade.tachiyomi.widget.TachiyomiTextInputEditText.Companion.setIncognito
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.presentation.core.components.material.Scaffold
@@ -55,13 +52,9 @@ class SourcePreferencesScreen(val sourceId: Long) : Screen() {
 
         Scaffold(
             topBar = {
-                TopAppBar(
-                    title = { Text(text = Injekt.get<SourceManager>().getOrStub(sourceId).toString()) },
-                    navigationIcon = {
-                        IconButton(onClick = navigator::pop) {
-                            UpIcon()
-                        }
-                    },
+                AppBar(
+                    title = Injekt.get<SourceManager>().getOrStub(sourceId).toString(),
+                    navigateUp = navigator::pop,
                     scrollBehavior = it,
                 )
             },
@@ -72,8 +65,7 @@ class SourcePreferencesScreen(val sourceId: Long) : Screen() {
                     .fillMaxSize()
                     .padding(contentPadding),
             ) {
-                val fragment = SourcePreferencesFragment.getInstance(sourceId)
-                add(it, fragment, null)
+                add(it, SourcePreferencesFragment.getInstance(sourceId), null)
             }
         }
     }
@@ -134,29 +126,28 @@ class SourcePreferencesFragment : PreferenceFragmentCompat() {
 
     private fun populateScreen(): PreferenceScreen {
         val sourceId = requireArguments().getLong(SOURCE_ID)
-        val source = Injekt.get<SourceManager>().get(sourceId)!!
-
-        check(source is ConfigurableSource)
-
-        val sharedPreferences = requireContext().getSharedPreferences(source.getPreferenceKey(), Context.MODE_PRIVATE)
-        val dataStore = SharedPreferencesDataStore(sharedPreferences)
-        preferenceManager.preferenceDataStore = dataStore
-
+        val source = Injekt.get<SourceManager>().getOrStub(sourceId)
         val sourceScreen = preferenceManager.createPreferenceScreen(requireContext())
-        source.setupPreferenceScreen(sourceScreen)
-        sourceScreen.forEach { pref ->
-            pref.isIconSpaceReserved = false
-            pref.isSingleLineTitle = false
-            if (pref is DialogPreference) {
-                pref.dialogTitle = pref.title
-            }
 
-            // Apply incognito IME for EditTextPreference
-            if (pref is EditTextPreference) {
-                val setListener = pref.getOnBindEditTextListener()
-                pref.setOnBindEditTextListener {
-                    setListener?.onBindEditText(it)
-                    it.setIncognito(lifecycleScope)
+        if (source is ConfigurableSource) {
+            val dataStore = SharedPreferencesDataStore(source.sourcePreferences())
+            preferenceManager.preferenceDataStore = dataStore
+
+            source.setupPreferenceScreen(sourceScreen)
+            sourceScreen.forEach { pref ->
+                pref.isIconSpaceReserved = false
+                pref.isSingleLineTitle = false
+                if (pref is DialogPreference && pref.dialogTitle.isNullOrEmpty()) {
+                    pref.dialogTitle = pref.title
+                }
+
+                // Apply incognito IME for EditTextPreference
+                if (pref is EditTextPreference) {
+                    val setListener = pref.getOnBindEditTextListener()
+                    pref.setOnBindEditTextListener {
+                        setListener?.onBindEditText(it)
+                        it.setIncognito(lifecycleScope)
+                    }
                 }
             }
         }
@@ -168,9 +159,9 @@ class SourcePreferencesFragment : PreferenceFragmentCompat() {
         private const val SOURCE_ID = "source_id"
 
         fun getInstance(sourceId: Long): SourcePreferencesFragment {
-            val fragment = SourcePreferencesFragment()
-            fragment.arguments = bundleOf(SOURCE_ID to sourceId)
-            return fragment
+            return SourcePreferencesFragment().apply {
+                arguments = bundleOf(SOURCE_ID to sourceId)
+            }
         }
     }
 }

@@ -1,20 +1,25 @@
 package eu.kanade.tachiyomi.data.track.kavita
 
-import android.content.Context
-import android.content.SharedPreferences
 import android.graphics.Color
-import androidx.annotation.StringRes
+import dev.icerock.moko.resources.StringResource
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.database.models.Track
-import eu.kanade.tachiyomi.data.track.EnhancedTrackService
-import eu.kanade.tachiyomi.data.track.TrackService
+import eu.kanade.tachiyomi.data.track.BaseTracker
+import eu.kanade.tachiyomi.data.track.EnhancedTracker
 import eu.kanade.tachiyomi.data.track.model.TrackSearch
+import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.sourcePreferences
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.i18n.MR
+import uy.kohesive.injekt.injectLazy
 import java.security.MessageDigest
 import tachiyomi.domain.track.model.Track as DomainTrack
 
-class Kavita(private val context: Context, id: Long) : TrackService(id), EnhancedTrackService {
+class Kavita(id: Long) : BaseTracker(id, "Kavita"), EnhancedTracker {
 
     companion object {
         const val UNREAD = 1
@@ -27,8 +32,7 @@ class Kavita(private val context: Context, id: Long) : TrackService(id), Enhance
     private val interceptor by lazy { KavitaInterceptor(this) }
     val api by lazy { KavitaApi(client, interceptor) }
 
-    @StringRes
-    override fun nameRes() = R.string.tracker_kavita
+    private val sourceManager: SourceManager by injectLazy()
 
     override fun getLogo(): Int = R.drawable.ic_tracker_kavita
 
@@ -36,11 +40,10 @@ class Kavita(private val context: Context, id: Long) : TrackService(id), Enhance
 
     override fun getStatusList() = listOf(UNREAD, READING, COMPLETED)
 
-    @StringRes
-    override fun getStatus(status: Int): Int? = when (status) {
-        UNREAD -> R.string.unread
-        READING -> R.string.reading
-        COMPLETED -> R.string.completed
+    override fun getStatus(status: Int): StringResource? = when (status) {
+        UNREAD -> MR.strings.unread
+        READING -> MR.strings.reading
+        COMPLETED -> MR.strings.completed
         else -> null
     }
 
@@ -50,9 +53,9 @@ class Kavita(private val context: Context, id: Long) : TrackService(id), Enhance
 
     override fun getCompletionStatus(): Int = COMPLETED
 
-    override fun getScoreList(): List<String> = emptyList()
+    override fun getScoreList(): ImmutableList<String> = persistentListOf()
 
-    override fun displayScore(track: Track): String = ""
+    override fun displayScore(track: DomainTrack): String = ""
 
     override suspend fun update(track: Track, didReadChapter: Boolean): Track {
         if (track.status != COMPLETED) {
@@ -86,7 +89,7 @@ class Kavita(private val context: Context, id: Long) : TrackService(id), Enhance
         saveCredentials("user", "pass")
     }
 
-    // TrackService.isLogged works by checking that credentials are saved.
+    // [Tracker].isLogged works by checking that credentials are saved.
     // By saving dummy, unused credentials, we can activate the tracker simply by login/logout
     override fun loginNoop() {
         saveCredentials("user", "pass")
@@ -113,28 +116,29 @@ class Kavita(private val context: Context, id: Long) : TrackService(id), Enhance
 
     fun loadOAuth() {
         val oauth = OAuth()
-        for (sourceId in 1..3) {
-            val authentication = oauth.authentications[sourceId - 1]
-            val sourceSuffixID by lazy {
-                val key = "kavita_$sourceId/all/1" // Hardcoded versionID to 1
+        for (id in 1..3) {
+            val authentication = oauth.authentications[id - 1]
+            val sourceId by lazy {
+                val key = "kavita_$id/all/1" // Hardcoded versionID to 1
                 val bytes = MessageDigest.getInstance("MD5").digest(key.toByteArray())
                 (0..7).map { bytes[it].toLong() and 0xff shl 8 * (7 - it) }
                     .reduce(Long::or) and Long.MAX_VALUE
             }
-            val preferences: SharedPreferences by lazy {
-                context.getSharedPreferences("source_$sourceSuffixID", 0x0000)
-            }
-            val prefApiUrl = preferences.getString("APIURL", "")!!
-            if (prefApiUrl.isEmpty()) {
+            val preferences = (sourceManager.get(sourceId) as ConfigurableSource).sourcePreferences()
+
+            val prefApiUrl = preferences.getString("APIURL", "")
+            val prefApiKey = preferences.getString("APIKEY", "")
+            if (prefApiUrl.isNullOrEmpty() || prefApiKey.isNullOrEmpty()) {
                 // Source not configured. Skip
                 continue
             }
-            val prefApiKey = preferences.getString("APIKEY", "")!!
+
             val token = api.getNewToken(apiUrl = prefApiUrl, apiKey = prefApiKey)
             if (token.isNullOrEmpty()) {
                 // Source is not accessible. Skip
                 continue
             }
+
             authentication.apiUrl = prefApiUrl
             authentication.jwtToken = token.toString()
         }

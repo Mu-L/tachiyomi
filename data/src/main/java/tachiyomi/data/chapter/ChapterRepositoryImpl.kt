@@ -2,6 +2,7 @@ package tachiyomi.data.chapter
 
 import kotlinx.coroutines.flow.Flow
 import logcat.LogPriority
+import tachiyomi.core.util.lang.toLong
 import tachiyomi.core.util.system.logcat
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.domain.chapter.model.Chapter
@@ -76,23 +77,80 @@ class ChapterRepositoryImpl(
         }
     }
 
-    override suspend fun getChapterByMangaId(mangaId: Long): List<Chapter> {
-        return handler.awaitList { chaptersQueries.getChaptersByMangaId(mangaId, chapterMapper) }
+    override suspend fun getChapterByMangaId(mangaId: Long, applyScanlatorFilter: Boolean): List<Chapter> {
+        return handler.awaitList {
+            chaptersQueries.getChaptersByMangaId(mangaId, applyScanlatorFilter.toLong(), ::mapChapter)
+        }
+    }
+
+    override suspend fun getScanlatorsByMangaId(mangaId: Long): List<String> {
+        return handler.awaitList {
+            chaptersQueries.getScanlatorsByMangaId(mangaId) { it.orEmpty() }
+        }
+    }
+
+    override fun getScanlatorsByMangaIdAsFlow(mangaId: Long): Flow<List<String>> {
+        return handler.subscribeToList {
+            chaptersQueries.getScanlatorsByMangaId(mangaId) { it.orEmpty() }
+        }
     }
 
     override suspend fun getBookmarkedChaptersByMangaId(mangaId: Long): List<Chapter> {
-        return handler.awaitList { chaptersQueries.getBookmarkedChaptersByMangaId(mangaId, chapterMapper) }
+        return handler.awaitList {
+            chaptersQueries.getBookmarkedChaptersByMangaId(
+                mangaId,
+                ::mapChapter,
+            )
+        }
     }
 
     override suspend fun getChapterById(id: Long): Chapter? {
-        return handler.awaitOneOrNull { chaptersQueries.getChapterById(id, chapterMapper) }
+        return handler.awaitOneOrNull { chaptersQueries.getChapterById(id, ::mapChapter) }
     }
 
-    override suspend fun getChapterByMangaIdAsFlow(mangaId: Long): Flow<List<Chapter>> {
-        return handler.subscribeToList { chaptersQueries.getChaptersByMangaId(mangaId, chapterMapper) }
+    override suspend fun getChapterByMangaIdAsFlow(mangaId: Long, applyScanlatorFilter: Boolean): Flow<List<Chapter>> {
+        return handler.subscribeToList {
+            chaptersQueries.getChaptersByMangaId(mangaId, applyScanlatorFilter.toLong(), ::mapChapter)
+        }
     }
 
     override suspend fun getChapterByUrlAndMangaId(url: String, mangaId: Long): Chapter? {
-        return handler.awaitOneOrNull { chaptersQueries.getChapterByUrlAndMangaId(url, mangaId, chapterMapper) }
+        return handler.awaitOneOrNull {
+            chaptersQueries.getChapterByUrlAndMangaId(
+                url,
+                mangaId,
+                ::mapChapter,
+            )
+        }
     }
+
+    private fun mapChapter(
+        id: Long,
+        mangaId: Long,
+        url: String,
+        name: String,
+        scanlator: String?,
+        read: Boolean,
+        bookmark: Boolean,
+        lastPageRead: Long,
+        chapterNumber: Double,
+        sourceOrder: Long,
+        dateFetch: Long,
+        dateUpload: Long,
+        lastModifiedAt: Long,
+    ): Chapter = Chapter(
+        id = id,
+        mangaId = mangaId,
+        read = read,
+        bookmark = bookmark,
+        lastPageRead = lastPageRead,
+        dateFetch = dateFetch,
+        sourceOrder = sourceOrder,
+        url = url,
+        name = name,
+        dateUpload = dateUpload,
+        chapterNumber = chapterNumber,
+        scanlator = scanlator,
+        lastModifiedAt = lastModifiedAt,
+    )
 }

@@ -2,9 +2,9 @@ package eu.kanade.tachiyomi.extension
 
 import android.content.Context
 import android.graphics.drawable.Drawable
+import eu.kanade.domain.extension.interactor.TrustExtension
 import eu.kanade.domain.source.service.SourcePreferences
-import eu.kanade.tachiyomi.R
-import eu.kanade.tachiyomi.extension.api.ExtensionGithubApi
+import eu.kanade.tachiyomi.extension.api.ExtensionApi
 import eu.kanade.tachiyomi.extension.api.ExtensionUpdateNotifier
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.InstallStep
@@ -19,11 +19,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import logcat.LogPriority
-import tachiyomi.core.preference.plusAssign
 import tachiyomi.core.util.lang.launchNow
 import tachiyomi.core.util.lang.withUIContext
 import tachiyomi.core.util.system.logcat
 import tachiyomi.domain.source.model.StubSource
+import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.util.Locale
@@ -34,13 +34,11 @@ import java.util.Locale
  * To avoid malicious distribution, every extension must be signed and it will only be loaded if its
  * signature is trusted, otherwise the user will be prompted with a warning to trust it before being
  * loaded.
- *
- * @param context The application context.
- * @param preferences The application preferences.
  */
 class ExtensionManager(
     private val context: Context,
     private val preferences: SourcePreferences = Injekt.get(),
+    private val trustExtension: TrustExtension = Injekt.get(),
 ) {
 
     var isInitialized = false
@@ -49,7 +47,7 @@ class ExtensionManager(
     /**
      * API where all the available extensions can be found.
      */
-    private val api = ExtensionGithubApi()
+    private val api = ExtensionApi()
 
     /**
      * The installer which installs, updates and uninstalls the extensions.
@@ -121,7 +119,7 @@ class ExtensionManager(
             api.findExtensions()
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
-            withUIContext { context.toast(R.string.extension_api_error) }
+            withUIContext { context.toast(MR.strings.extension_api_error) }
             emptyList()
         }
 
@@ -180,14 +178,22 @@ class ExtensionManager(
             val pkgName = installedExt.pkgName
             val availableExt = availableExtensions.find { it.pkgName == pkgName }
 
-            if (!installedExt.isUnofficial && availableExt == null && !installedExt.isObsolete) {
+            if (availableExt == null && !installedExt.isObsolete) {
                 mutInstalledExtensions[index] = installedExt.copy(isObsolete = true)
                 changed = true
             } else if (availableExt != null) {
                 val hasUpdate = installedExt.updateExists(availableExt)
 
                 if (installedExt.hasUpdate != hasUpdate) {
-                    mutInstalledExtensions[index] = installedExt.copy(hasUpdate = hasUpdate)
+                    mutInstalledExtensions[index] = installedExt.copy(
+                        hasUpdate = hasUpdate,
+                        repoUrl = availableExt.repoUrl,
+                    )
+                    changed = true
+                } else {
+                    mutInstalledExtensions[index] = installedExt.copy(
+                        repoUrl = availableExt.repoUrl,
+                    )
                     changed = true
                 }
             }
@@ -249,19 +255,19 @@ class ExtensionManager(
     }
 
     /**
-     * Adds the given signature to the list of trusted signatures. It also loads in background the
-     * extensions that match this signature.
+     * Adds the given extension to the list of trusted extensions. It also loads in background the
+     * now trusted extensions.
      *
-     * @param signature The signature to whitelist.
+     * @param extension the extension to trust
      */
-    fun trustSignature(signature: String) {
-        val untrustedSignatures = _untrustedExtensionsFlow.value.map { it.signatureHash }.toSet()
-        if (signature !in untrustedSignatures) return
+    fun trust(extension: Extension.Untrusted) {
+        val untrustedPkgNames = _untrustedExtensionsFlow.value.map { it.pkgName }.toSet()
+        if (extension.pkgName !in untrustedPkgNames) return
 
-        ExtensionLoader.trustedSignatures += signature
-        preferences.trustedSignatures() += signature
+        trustExtension.trust(extension.pkgName, extension.versionCode, extension.signatureHash)
 
-        val nowTrustedExtensions = _untrustedExtensionsFlow.value.filter { it.signatureHash == signature }
+        val nowTrustedExtensions = _untrustedExtensionsFlow.value
+            .filter { it.pkgName == extension.pkgName && it.versionCode == extension.versionCode }
         _untrustedExtensionsFlow.value -= nowTrustedExtensions
 
         launchNow {
@@ -355,7 +361,7 @@ class ExtensionManager(
 
     private fun Extension.Installed.updateExists(availableExtension: Extension.Available? = null): Boolean {
         val availableExt = availableExtension ?: _availableExtensionsFlow.value.find { it.pkgName == pkgName }
-        if (isUnofficial || availableExt == null) return false
+            ?: return false
 
         return (availableExt.versionCode > versionCode || availableExt.libVersion > libVersion)
     }

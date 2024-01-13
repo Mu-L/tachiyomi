@@ -12,7 +12,7 @@ class LibraryFlagsTest {
     @Test
     fun `Check the amount of flags`() {
         LibraryDisplayMode.values.size shouldBe 4
-        LibrarySort.types.size shouldBe 8
+        LibrarySort.types.size shouldBe 9
         LibrarySort.directions.size shouldBe 2
     }
 
@@ -34,7 +34,10 @@ class LibraryFlagsTest {
 
     @Test
     fun `Test Flag plus operator with old flag as base`() {
-        val currentSort = LibrarySort(LibrarySort.Type.UnreadCount, LibrarySort.Direction.Descending)
+        val currentSort = LibrarySort(
+            LibrarySort.Type.UnreadCount,
+            LibrarySort.Direction.Descending,
+        )
         currentSort.flag shouldBe 0b00001100
 
         val sort = LibrarySort(LibrarySort.Type.DateAdded, LibrarySort.Direction.Ascending)

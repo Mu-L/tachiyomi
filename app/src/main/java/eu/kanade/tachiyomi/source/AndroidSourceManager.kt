@@ -36,7 +36,9 @@ class AndroidSourceManager(
 
     private val stubSourcesMap = ConcurrentHashMap<Long, StubSource>()
 
-    override val catalogueSources: Flow<List<CatalogueSource>> = sourcesMapFlow.map { it.values.filterIsInstance<CatalogueSource>() }
+    override val catalogueSources: Flow<List<CatalogueSource>> = sourcesMapFlow.map {
+        it.values.filterIsInstance<CatalogueSource>()
+    }
 
     init {
         scope.launch {
@@ -54,7 +56,7 @@ class AndroidSourceManager(
                     extensions.forEach { extension ->
                         extension.sources.forEach {
                             mutableMap[it.id] = it
-                            registerStubSource(it.toStubSource())
+                            registerStubSource(StubSource.from(it))
                         }
                     }
                     sourcesMapFlow.value = mutableMap

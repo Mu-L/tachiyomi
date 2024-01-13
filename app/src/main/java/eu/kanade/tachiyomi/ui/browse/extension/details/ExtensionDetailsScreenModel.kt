@@ -3,7 +3,7 @@ package eu.kanade.tachiyomi.ui.browse.extension.details
 import android.content.Context
 import androidx.compose.runtime.Immutable
 import cafe.adriel.voyager.core.model.StateScreenModel
-import cafe.adriel.voyager.core.model.coroutineScope
+import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.domain.extension.interactor.ExtensionSourceItem
 import eu.kanade.domain.extension.interactor.GetExtensionSources
 import eu.kanade.domain.source.interactor.ToggleSource
@@ -12,6 +12,9 @@ import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.util.system.LocaleHelper
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -26,11 +29,6 @@ import tachiyomi.core.util.system.logcat
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
-private const val URL_EXTENSION_COMMITS =
-    "https://github.com/tachiyomiorg/tachiyomi-extensions/commits/master"
-private const val URL_EXTENSION_BLOB =
-    "https://github.com/tachiyomiorg/tachiyomi-extensions/blob/master"
-
 class ExtensionDetailsScreenModel(
     pkgName: String,
     context: Context,
@@ -44,7 +42,7 @@ class ExtensionDetailsScreenModel(
     val events: Flow<ExtensionDetailsEvent> = _events.receiveAsFlow()
 
     init {
-        coroutineScope.launch {
+        screenModelScope.launch {
             launch {
                 extensionManager.installedExtensionsFlow
                     .map { it.firstOrNull { extension -> extension.pkgName == pkgName } }
@@ -75,39 +73,14 @@ class ExtensionDetailsScreenModel(
                         }
                         .catch { throwable ->
                             logcat(LogPriority.ERROR, throwable)
-                            mutableState.update { it.copy(_sources = emptyList()) }
+                            mutableState.update { it.copy(_sources = persistentListOf()) }
                         }
                         .collectLatest { sources ->
-                            mutableState.update { it.copy(_sources = sources) }
+                            mutableState.update { it.copy(_sources = sources.toImmutableList()) }
                         }
                 }
             }
         }
-    }
-
-    fun getChangelogUrl(): String {
-        val extension = state.value.extension ?: return ""
-
-        val pkgName = extension.pkgName.substringAfter("eu.kanade.tachiyomi.extension.")
-        val pkgFactory = extension.pkgFactory
-        if (extension.hasChangelog) {
-            return createUrl(URL_EXTENSION_BLOB, pkgName, pkgFactory, "/CHANGELOG.md")
-        }
-
-        // Falling back on GitHub commit history because there is no explicit changelog in extension
-        return createUrl(URL_EXTENSION_COMMITS, pkgName, pkgFactory)
-    }
-
-    fun getReadmeUrl(): String {
-        val extension = state.value.extension ?: return ""
-
-        if (!extension.hasReadme) {
-            return "https://tachiyomi.org/help/faq/#extensions"
-        }
-
-        val pkgName = extension.pkgName.substringAfter("eu.kanade.tachiyomi.extension.")
-        val pkgFactory = extension.pkgFactory
-        return createUrl(URL_EXTENSION_BLOB, pkgName, pkgFactory, "/README.md")
     }
 
     fun clearCookies() {
@@ -145,30 +118,14 @@ class ExtensionDetailsScreenModel(
             ?.let { toggleSource.await(it, enable) }
     }
 
-    private fun createUrl(
-        url: String,
-        pkgName: String,
-        pkgFactory: String?,
-        path: String = "",
-    ): String {
-        return if (!pkgFactory.isNullOrEmpty()) {
-            when (path.isEmpty()) {
-                true -> "$url/multisrc/src/main/java/eu/kanade/tachiyomi/multisrc/$pkgFactory"
-                else -> "$url/multisrc/overrides/$pkgFactory/" + (pkgName.split(".").lastOrNull() ?: "") + path
-            }
-        } else {
-            url + "/src/" + pkgName.replace(".", "/") + path
-        }
-    }
-
     @Immutable
     data class State(
         val extension: Extension.Installed? = null,
-        private val _sources: List<ExtensionSourceItem>? = null,
+        private val _sources: ImmutableList<ExtensionSourceItem>? = null,
     ) {
 
-        val sources: List<ExtensionSourceItem>
-            get() = _sources.orEmpty()
+        val sources: ImmutableList<ExtensionSourceItem>
+            get() = _sources ?: persistentListOf()
 
         val isLoading: Boolean
             get() = extension == null || _sources == null
